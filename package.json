@@ -1,0 +1,60 @@
+{
+  "name": "masaustu-veresiye-takip",
+  "version": "1.0.0",
+  "description": "Kısayol tuşları ile hızlı çalışan masaüstü veresiye takip uygulaması",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "electron-builder install-app-deps",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win",
+    "build-mac": "electron-builder --mac",
+    "build-linux": "electron-builder --linux"
+  },
+  "keywords": [
+    "veresiye",
+    "takip",
+    "masaüstü",
+    "electron",
+    "cari"
+  ],
+  "author": "Etic Ajans",
+  "license": "MIT",
+  "type": "commonjs",
+  "build": {
+    "appId": "com.eticajans.veresiye-takip",
+    "productName": "Veresiye Takip",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "renderer.js",
+      "index.html",
+      "styles.css",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
+  },
+  "devDependencies": {
+    "electron": "^25.9.8",
+    "electron-builder": "^26.0.12",
+    "sqlite3": "^5.1.7"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1"
+  }
+}

@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Etic Ajans - Veresiye Takip Sürüm: 1.0.1.1</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-left">
+                <h1>Etic Ajans - Veresiye Takip Sürüm: 1.0.1.1</h1>
+                <div class="keyboard-hints">
+                    <span class="hint"><kbd>F1</kbd> Müşteri Ara</span>
+                    <span class="hint"><kbd>F4</kbd> Satış Ekle</span>
+                    <span class="hint"><kbd>F5</kbd> Tahsilat Ekle</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <button class="header-btn" onclick="showProductManagement()">📋 Ürünler</button>
+                <button class="header-btn" onclick="showReports()">📊 Raporlar</button>
+                <button class="header-btn" onclick="showSettings()">⚙️ Ayarlar</button>
+                <button class="header-btn exit" onclick="exitApp()">❌ Çıkış</button>
+            </div>
+        </header>
+
+        <!-- Top Controls -->
+        <div class="top-controls">
+            <div class="date-filters">
+                <label>📅 Tarih Aralığı:</label>
+                <input type="date" id="start-date" value="2023-05-01">
+                <span>→</span>
+                <input type="date" id="end-date" value="2023-05-31">
+            </div>
+            <div class="action-buttons">
+                <button class="action-btn primary" onclick="queryTransactions()">🔍 İşlem Sorgula</button>
+                <button class="action-btn" onclick="showBalanceTotal()">📊 Bakiye Özeti</button>
+                <button class="action-btn" onclick="printBalanceReport()">🖨️ Yazdır</button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left Panel: Cari Hesap Listesi -->
+            <div class="left-panel">
+                <div class="panel-header">
+                    <h2>📋 CARİ HESAP LİSTESİ</h2>
+                </div>
+                
+                <!-- Account Summary -->
+                <div class="account-summary">
+                    <div class="summary-item">
+                        <span class="label">Toplam Satış:</span>
+                        <span class="value" id="total-sales">0,00</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label">Toplam Tahsilat:</span>
+                        <span class="value" id="total-payments">0,00</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label">Toplam Borç:</span>
+                        <span class="value" id="total-debt">0,00</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label">Net Bakiye:</span>
+                        <span class="value" id="net-balance">0,00</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label">Tahsilat Oranı:</span>
+                        <span class="value" id="payment-rate">0%</span>
+                    </div>
+                </div>
+
+                <!-- Excel Import Button -->
+                <button class="excel-btn">📊 Excel'den Toplu Hesap Aktar</button>
+
+                <!-- Account Management Buttons -->
+                <div class="account-buttons">
+                    <button class="account-btn" onclick="showAddCustomerModal()">Hesap Ekle</button>
+                    <button class="account-btn" onclick="editCustomer()">Hesap Değiştir</button>
+                    <button class="account-btn" onclick="deleteCustomer()">Hesap Sil</button>
+                </div>
+
+                <!-- Search -->
+                <input type="text" class="search-input" id="customer-search" placeholder="Müşteri adı yazın ve Enter'a basın.." onkeyup="searchCustomers()" onkeydown="handleCustomerSearchKeydown(event)">
+
+                <!-- Customer List -->
+                <div class="customer-list">
+                    <table class="customer-table">
+                        <thead>
+                            <tr>
+                                <th>Ünvanı/Adı</th>
+                                <th>Kodu</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customer-table-body">
+                            <!-- Customers will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Middle Panel: İşlem Listesi -->
+            <div class="middle-panel">
+                <div class="panel-header">
+                    <h2>📋 İŞLEM LİSTESİ</h2>
+                </div>
+
+                <!-- Selected Customer Info -->
+                <div class="selected-customer-info" id="selected-customer-info">
+                    <div class="customer-info-container">
+                        <div class="customer-details">
+                            <div class="customer-name" id="selected-customer-name">DENEME A.Ş.</div>
+                            <div class="detail-grid">
+                                <div class="detail-row">
+                                    <span class="label">Tel:</span>
+                                    <span class="value" id="customer-phone">-</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="label">Gsm:</span>
+                                    <span class="value" id="customer-gsm">-</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="label">Limit:</span>
+                                    <span class="value" id="customer-limit">500,00</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="label">Aktif Hesap:</span>
+                                    <span class="value active-account" id="customer-status">Aktif Hesap</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="label">Borç:</span>
+                                    <span class="value" id="customer-debt">0,00</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="label">Tahsilat Toplamı:</span>
+                                    <span class="value" id="customer-credit">0,00</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="label">Bakiye:</span>
+                                    <span class="value" id="customer-balance">0,00</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="label">Son Tahsilat Tarihi:</span>
+                                    <span class="value" id="last-payment-date">-</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="label">Son Satış Tarihi:</span>
+                                    <span class="value" id="last-sale-date">-</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="customer-action-buttons">
+                            <button class="customer-action-btn" onclick="addSale()">💰 Satış Ekle</button>
+                            <button class="customer-action-btn" onclick="addPurchase()">💳 Tahsilat Ekle</button>
+                            <button class="customer-action-btn" onclick="editCustomer()">✏️ Müşteri Düzenle</button>
+                            <button class="customer-action-btn" onclick="deleteCustomer()">🗑️ Müşteri Sil</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Transaction Sections (Side by Side) -->
+                <div class="transaction-sections">
+                    <!-- Sales-Payment Section -->
+                    <div class="transaction-section">
+                        <div class="section-header">
+                            <h3>💰 SATIŞ-ÖDEME (+)</h3>
+                            <div class="section-buttons">
+                                <button class="section-btn" onclick="addSale()">Ekle</button>
+                                <button class="section-btn" onclick="editSale()">Değiştir</button>
+                                <button class="section-btn" onclick="deleteSale()">Sil</button>
+                            </div>
+                        </div>
+                        
+                        <input type="text" class="search-input" placeholder="Arama için tıklayınız..">
+                        
+                        <div class="transaction-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Gün</th>
+                                        <th>Ay</th>
+                                        <th>Yıl</th>
+                                        <th>Açıklama</th>
+                                        <th>Miktar</th>
+                                        <th>Tutar</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sales-table-body">
+                                    <tr>
+                                        <td colspan="6" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Purchase-Collection Section -->
+                    <div class="transaction-section">
+                <div class="section-header">
+                            <h3>💳 ALIŞ-TAHSİLAT (-)</h3>
+                            <div class="section-buttons">
+                                <button class="section-btn" onclick="addPurchase()">Ekle</button>
+                                <button class="section-btn" onclick="editPurchase()">Değiştir</button>
+                                <button class="section-btn" onclick="deletePurchase()">Sil</button>
+                            </div>
+                        </div>
+                        
+                        <input type="text" class="search-input" placeholder="Arama için tıklayınız..">
+                        
+                        <div class="transaction-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Gün</th>
+                                        <th>Ay</th>
+                                        <th>Yıl</th>
+                                        <th>Açıklama</th>
+                                        <th>Miktar</th>
+                                        <th>Tutar</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="purchases-table-body">
+                                    <tr>
+                                        <td colspan="6" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Edit Sale Modal -->
+    <div id="edit-sale-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Satış Düzenle</h2>
+                <span class="close" onclick="closeModal('edit-sale-modal')">&times;</span>
+            </div>
+            <form id="edit-sale-form" onsubmit="handleEditSale(event)">
+                <input type="hidden" id="edit-sale-id" name="id">
+                
+                <div class="form-group">
+                    <label for="edit-sale-customer">Müşteri *</label>
+                    <input type="text" id="edit-sale-customer" name="customer" required readonly>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit-sale-date">Tarih *</label>
+                    <input type="date" id="edit-sale-date" name="date" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit-sale-product">Ürün</label>
+                    <select id="edit-sale-product" name="product_id" onchange="handleEditProductSelection()">
+                        <option value="">Ürün Seçin</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit-sale-amount">Tutar (KDV Dahil) *</label>
+                    <input type="number" id="edit-sale-amount" name="amount" step="0.01" min="0" required>
+                    </div>
+                
+                <div class="form-group">
+                    <label for="edit-sale-description">Açıklama</label>
+                    <input type="text" id="edit-sale-description" name="description" placeholder="Satış açıklaması">
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeModal('edit-sale-modal')">İptal</button>
+                    <button type="submit" class="btn-primary">Güncelle</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Purchase Modal -->
+    <div id="edit-purchase-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Tahsilat Düzenle</h2>
+                <span class="close" onclick="closeModal('edit-purchase-modal')">&times;</span>
+            </div>
+            <form id="edit-purchase-form" onsubmit="handleEditPurchase(event)">
+                <input type="hidden" id="edit-purchase-id" name="id">
+                
+                <div class="form-group">
+                    <label for="edit-purchase-customer">Müşteri *</label>
+                    <input type="text" id="edit-purchase-customer" name="customer" required readonly>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit-purchase-date">Tarih *</label>
+                    <input type="date" id="edit-purchase-date" name="date" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit-purchase-amount">Tutar *</label>
+                    <input type="number" id="edit-purchase-amount" name="amount" step="0.01" min="0" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit-purchase-description">Açıklama</label>
+                    <input type="text" id="edit-purchase-description" name="description" placeholder="Tahsilat açıklaması">
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeModal('edit-purchase-modal')">İptal</button>
+                    <button type="submit" class="btn-primary">Güncelle</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- Add Customer Modal -->
+    <div id="add-customer-modal" class="modal">
+        <div class="modal-content large-modal">
+            <div class="modal-header">
+                <h3>Hesap Ekle</h3>
+                <button class="close-btn" onclick="closeModal('add-customer-modal')">&times;</button>
+            </div>
+            <form id="add-customer-form">
+                <!-- Tab Navigation -->
+                <div class="tab-navigation">
+                    <button type="button" class="tab-btn active" onclick="switchTab('basic-info')">Temel Bilgiler</button>
+                    <button type="button" class="tab-btn" onclick="switchTab('tax-info')">Vergi Bilgileri</button>
+                    <button type="button" class="tab-btn" onclick="switchTab('invoice-info')">Fatura Bilgileri</button>
+                    <button type="button" class="tab-btn" onclick="switchTab('e-invoice-info')">E-Fatura</button>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="tab-content">
+                    <!-- Temel Bilgiler Tab -->
+                    <div id="basic-info" class="tab-panel active">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="customer-name">Ünvanı/Adı *</label>
+                                <input type="text" id="customer-name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="customer-code">Kodu</label>
+                                <input type="text" id="customer-code">
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="customer-type">Müşteri Tipi</label>
+                                <select id="customer-type">
+                                    <option value="individual">Bireysel</option>
+                                    <option value="company">Kurumsal</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="customer-limit">Kredi Limiti</label>
+                                <input type="number" id="customer-limit-input" step="0.01" value="500">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="customer-phone">Telefon</label>
+                                <input type="tel" id="customer-phone-input">
+                            </div>
+                            <div class="form-group">
+                                <label for="customer-gsm">Gsm</label>
+                                <input type="tel" id="customer-gsm-input">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="customer-email">E-posta</label>
+                            <input type="email" id="customer-email">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="customer-website">Web Sitesi</label>
+                            <input type="url" id="customer-website">
+                        </div>
+
+                <div class="form-group">
+                    <label for="customer-address">Adres</label>
+                    <textarea id="customer-address" rows="3"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Vergi Bilgileri Tab -->
+                    <div id="tax-info" class="tab-panel">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="customer-tc-number">TC Kimlik No</label>
+                                <input type="text" id="customer-tc-number" maxlength="11">
+                            </div>
+                            <div class="form-group">
+                                <label for="customer-tax-number">Vergi Numarası</label>
+                                <input type="text" id="customer-tax-number">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="customer-tax-office">Vergi Dairesi</label>
+                            <input type="text" id="customer-tax-office">
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="customer-contact-person">Yetkili Kişi</label>
+                                <input type="text" id="customer-contact-person">
+                            </div>
+                            <div class="form-group">
+                                <label for="customer-contact-phone">Yetkili Telefon</label>
+                                <input type="tel" id="customer-contact-phone">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fatura Bilgileri Tab -->
+                    <div id="invoice-info" class="tab-panel">
+                        <div class="form-group">
+                            <label for="customer-invoice-address">Fatura Adresi</label>
+                            <textarea id="customer-invoice-address" rows="3"></textarea>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="customer-invoice-city">Şehir</label>
+                                <input type="text" id="customer-invoice-city">
+                            </div>
+                            <div class="form-group">
+                                <label for="customer-invoice-district">İlçe</label>
+                                <input type="text" id="customer-invoice-district">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="customer-invoice-postal-code">Posta Kodu</label>
+                                <input type="text" id="customer-invoice-postal-code">
+                            </div>
+                            <div class="form-group">
+                                <label for="customer-account-code">Hesap Kodu</label>
+                                <input type="text" id="customer-account-code">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="customer-cost-center">Maliyet Merkezi</label>
+                            <input type="text" id="customer-cost-center">
+                        </div>
+                    </div>
+
+                    <!-- E-Fatura Tab -->
+                    <div id="e-invoice-info" class="tab-panel">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="customer-e-invoice-alias">E-Fatura Alias</label>
+                                <input type="text" id="customer-e-invoice-alias">
+                            </div>
+                            <div class="form-group">
+                                <label for="customer-e-archive-alias">E-Arşiv Alias</label>
+                                <input type="text" id="customer-e-archive-alias">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="customer-e-invoice-enabled">
+                                    E-Fatura Aktif
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="customer-e-archive-enabled">
+                                    E-Arşiv Aktif
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="info-box">
+                            <h4>📋 E-Fatura Entegrasyonu</h4>
+                            <p>E-fatura ve e-arşiv özellikleri gelecek sürümde aktif olacaktır. Şimdilik bilgileri kaydedebilirsiniz.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('add-customer-modal')">
+                        İptal
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        Kaydet
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Customer Modal -->
+    <div id="edit-customer-modal" class="modal">
+        <div class="modal-content large-modal">
+            <div class="modal-header">
+                <h3>Hesap Düzenle</h3>
+                <button class="close-btn" onclick="closeModal('edit-customer-modal')">&times;</button>
+            </div>
+            <form id="edit-customer-form">
+                <input type="hidden" id="edit-customer-id">
+                
+                <!-- Tab Navigation -->
+                <div class="tab-navigation">
+                    <button type="button" class="tab-btn active" onclick="switchTab('edit-basic-info')">Temel Bilgiler</button>
+                    <button type="button" class="tab-btn" onclick="switchTab('edit-tax-info')">Vergi Bilgileri</button>
+                    <button type="button" class="tab-btn" onclick="switchTab('edit-invoice-info')">Fatura Bilgileri</button>
+                    <button type="button" class="tab-btn" onclick="switchTab('edit-e-invoice-info')">E-Fatura</button>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="tab-content">
+                    <!-- Temel Bilgiler Tab -->
+                    <div id="edit-basic-info" class="tab-panel active">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-customer-name">Ünvanı/Adı *</label>
+                                <input type="text" id="edit-customer-name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-customer-code">Kodu</label>
+                                <input type="text" id="edit-customer-code">
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-customer-type">Müşteri Tipi</label>
+                                <select id="edit-customer-type">
+                                    <option value="individual">Bireysel</option>
+                                    <option value="company">Kurumsal</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-customer-limit">Kredi Limiti</label>
+                                <input type="number" id="edit-customer-limit" step="0.01">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-customer-phone">Telefon</label>
+                                <input type="tel" id="edit-customer-phone">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-customer-gsm">Gsm</label>
+                                <input type="tel" id="edit-customer-gsm">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-customer-email">E-posta</label>
+                            <input type="email" id="edit-customer-email">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-customer-website">Web Sitesi</label>
+                            <input type="url" id="edit-customer-website">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-customer-address">Adres</label>
+                            <textarea id="edit-customer-address" rows="3"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Vergi Bilgileri Tab -->
+                    <div id="edit-tax-info" class="tab-panel">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-customer-tc-number">TC Kimlik No</label>
+                                <input type="text" id="edit-customer-tc-number" maxlength="11">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-customer-tax-number">Vergi Numarası</label>
+                                <input type="text" id="edit-customer-tax-number">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-customer-tax-office">Vergi Dairesi</label>
+                            <input type="text" id="edit-customer-tax-office">
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-customer-contact-person">Yetkili Kişi</label>
+                                <input type="text" id="edit-customer-contact-person">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-customer-contact-phone">Yetkili Telefon</label>
+                                <input type="tel" id="edit-customer-contact-phone">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fatura Bilgileri Tab -->
+                    <div id="edit-invoice-info" class="tab-panel">
+                        <div class="form-group">
+                            <label for="edit-customer-invoice-address">Fatura Adresi</label>
+                            <textarea id="edit-customer-invoice-address" rows="3"></textarea>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-customer-invoice-city">Şehir</label>
+                                <input type="text" id="edit-customer-invoice-city">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-customer-invoice-district">İlçe</label>
+                                <input type="text" id="edit-customer-invoice-district">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-customer-invoice-postal-code">Posta Kodu</label>
+                                <input type="text" id="edit-customer-invoice-postal-code">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-customer-account-code">Hesap Kodu</label>
+                                <input type="text" id="edit-customer-account-code">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-customer-cost-center">Maliyet Merkezi</label>
+                            <input type="text" id="edit-customer-cost-center">
+                        </div>
+                    </div>
+
+                    <!-- E-Fatura Tab -->
+                    <div id="edit-e-invoice-info" class="tab-panel">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-customer-e-invoice-alias">E-Fatura Alias</label>
+                                <input type="text" id="edit-customer-e-invoice-alias">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-customer-e-archive-alias">E-Arşiv Alias</label>
+                                <input type="text" id="edit-customer-e-archive-alias">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="edit-customer-e-invoice-enabled">
+                                    E-Fatura Aktif
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="edit-customer-e-archive-enabled">
+                                    E-Arşiv Aktif
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="info-box">
+                            <h4>📋 E-Fatura Entegrasyonu</h4>
+                            <p>E-fatura ve e-arşiv özellikleri gelecek sürümde aktif olacaktır. Şimdilik bilgileri kaydedebilirsiniz.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('edit-customer-modal')">
+                        İptal
+            </button>
+                    <button type="submit" class="btn btn-primary">
+                        Güncelle
+            </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Sale Modal -->
+    <div id="add-sale-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Satış Ekle</h3>
+                <button class="close-btn" onclick="closeModal('add-sale-modal')">&times;</button>
+            </div>
+            <form id="add-sale-form">
+                <div class="form-group">
+                    <label for="sale-customer">Müşteri *</label>
+                    <input type="text" id="sale-customer" placeholder="Müşteri seçildi..." readonly>
+                </div>
+                
+                <!-- TUTAR - EN ÖNEMLİ ALAN, İLK SIRADA -->
+                <div class="form-group">
+                    <label for="sale-amount">Tutar (KDV Dahil) *</label>
+                    <input type="number" id="sale-amount" step="0.01" placeholder="Tutarı girin ve Enter'a basın" required autofocus>
+                </div>
+                
+                <div class="form-group">
+                    <label for="sale-date">Tarih *</label>
+                    <input type="date" id="sale-date" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="sale-description">Açıklama</label>
+                    <input type="text" id="sale-description" placeholder="Opsiyonel açıklama">
+                </div>
+                
+                <!-- ÜRÜN SEÇİMİ - OPSIYONEL, ALTTA -->
+                <div class="form-group" style="border-top: 1px solid #e0e0e0; padding-top: 15px; margin-top: 10px;">
+                    <label for="sale-product" style="color: #999;">Ürün Seç (Opsiyonel)</label>
+                    <div style="display: flex; gap: 8px;">
+                        <select id="sale-product" style="flex: 1;">
+                            <option value="">Ürün seçmek için tıklayın...</option>
+                        </select>
+                        <button type="button" class="btn btn-secondary" onclick="showQuickAddProduct()" style="white-space: nowrap;">
+                            + Hızlı Ekle
+                        </button>
+                    </div>
+                    <small style="color: #999; font-size: 12px;">Not: Ürün seçerseniz tutar otomatik güncellenir</small>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('add-sale-modal')">
+                        İptal
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        💾 Kaydet (Enter)
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Purchase Modal -->
+    <div id="add-purchase-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Tahsilat Ekle</h3>
+                <button class="close-btn" onclick="closeModal('add-purchase-modal')">&times;</button>
+            </div>
+            <form id="add-purchase-form">
+                <div class="form-group">
+                    <label for="purchase-customer">Müşteri *</label>
+                    <input type="text" id="purchase-customer" placeholder="Müşteri seçildi..." readonly>
+                </div>
+                
+                <!-- TUTAR - EN ÖNEMLİ ALAN, İLK SIRADA -->
+                <div class="form-group">
+                    <label for="purchase-amount">Tutar *</label>
+                    <input type="number" id="purchase-amount" step="0.01" placeholder="Tutarı girin ve Enter'a basın" required autofocus>
+                </div>
+                
+                <div class="form-group">
+                    <label for="purchase-date">Tarih *</label>
+                    <input type="date" id="purchase-date" required>
+                </div>
+                
+            <div class="form-group">
+                    <label for="purchase-description">Açıklama</label>
+                    <input type="text" id="purchase-description" placeholder="Opsiyonel açıklama">
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('add-purchase-modal')">
+                        İptal
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        💾 Kaydet (Enter)
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Product Management Modal -->
+    <div id="product-management-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3>Ürün Yönetimi</h3>
+                <button class="close-btn" onclick="closeModal('product-management-modal')">&times;</button>
+            </div>
+            <div style="padding: 16px;">
+                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                    <button class="btn btn-primary" onclick="showAddProductModal()">Ürün Ekle</button>
+                    <button class="btn btn-secondary" onclick="loadProducts()">Yenile</button>
+                </div>
+                <div class="product-list">
+                    <table class="customer-table" style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>Ürün Adı</th>
+                                <th>Kod</th>
+                                <th>Birim</th>
+                                <th>Satış Fiyatı</th>
+                                <th>Stok</th>
+                                <th>İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody id="product-table-body">
+                            <!-- Products will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Product Modal -->
+    <div id="add-product-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Ürün Ekle</h3>
+                <button class="close-btn" onclick="closeModal('add-product-modal')">&times;</button>
+            </div>
+            <form id="add-product-form">
+                <div class="form-group">
+                    <label for="product-name">Ürün Adı *</label>
+                    <input type="text" id="product-name" required>
+                </div>
+                <div class="form-group">
+                    <label for="product-code">Ürün Kodu</label>
+                    <input type="text" id="product-code">
+                </div>
+                <div class="form-group">
+                    <label for="product-barcode">Barkod</label>
+                    <input type="text" id="product-barcode">
+                </div>
+                <div class="form-group">
+                    <label for="product-unit">Birim</label>
+                    <select id="product-unit">
+                        <option value="adet">Adet</option>
+                        <option value="kg">Kilogram</option>
+                        <option value="lt">Litre</option>
+                        <option value="m">Metre</option>
+                        <option value="m2">Metrekare</option>
+                        <option value="m3">Metreküp</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="product-purchase-price">Alış Fiyatı</label>
+                    <input type="number" id="product-purchase-price" step="0.01" value="0">
+                </div>
+                <div class="form-group">
+                    <label for="product-vat">KDV Oranı (%) *</label>
+                    <select id="product-vat" required>
+                        <option value="0">%0</option>
+                        <option value="1">%1</option>
+                        <option value="10">%10</option>
+                        <option value="20" selected>%20</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="product-sale-price">Satış Fiyatı (KDV Dahil) *</label>
+                    <input type="number" id="product-sale-price" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="product-stock">Stok Miktarı</label>
+                    <input type="number" id="product-stock" step="0.01" value="0">
+                </div>
+                <div class="form-group">
+                    <label for="product-min-stock">Minimum Stok</label>
+                    <input type="number" id="product-min-stock" step="0.01" value="0">
+                </div>
+                <div class="form-group">
+                    <label for="product-category">Kategori</label>
+                    <input type="text" id="product-category">
+                </div>
+                <div class="form-group">
+                    <label for="product-description">Açıklama</label>
+                    <textarea id="product-description" rows="3"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('add-product-modal')">
+                        İptal
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        Kaydet
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Quick Add Product Modal -->
+    <div id="quick-add-product-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>Hızlı Ürün Ekle</h3>
+                <button class="close-btn" onclick="closeModal('quick-add-product-modal')">&times;</button>
+            </div>
+            <form id="quick-add-product-form">
+                <div class="form-group">
+                    <label for="quick-product-name">Ürün Adı *</label>
+                    <input type="text" id="quick-product-name" placeholder="Ürün adı girin" required>
+                </div>
+                <div class="form-group">
+                    <label for="quick-product-vat">KDV Oranı (%) *</label>
+                    <select id="quick-product-vat" required>
+                        <option value="0">%0</option>
+                        <option value="1">%1</option>
+                        <option value="10">%10</option>
+                        <option value="20" selected>%20</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="quick-product-price">Satış Fiyatı (KDV Dahil) *</label>
+                    <input type="number" id="quick-product-price" step="0.01" placeholder="Örn: 1500" required>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('quick-add-product-modal')">
+                        İptal
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        Kaydet ve Seç
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Customer Search Modal -->
+    <div id="customer-search-modal" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2>🔍 Müşteri Arama ve Seçim</h2>
+                <button class="close-btn" onclick="closeModal('customer-search-modal')">&times;</button>
+            </div>
+            <div style="padding: 20px;">
+                <!-- Arama Kutusu -->
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label for="customer-search-input" style="font-weight: 600; color: #4a5568; margin-bottom: 8px; display: block;">
+                        🔍 Müşteri Ara:
+                    </label>
+                    <input type="text" id="customer-search-input" placeholder="Müşteri adı, kodu veya telefon numarası yazın..." 
+                           style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 6px; font-size: 14px;"
+                           onkeyup="searchCustomersInModal()" onkeydown="handleCustomerSearchModalKeydown(event)">
+                </div>
+
+                <!-- Hızlı Filtreler -->
+                <div style="margin-bottom: 20px;">
+                    <h3 style="color: #4a5568; margin-bottom: 10px; font-size: 14px;">⚡ Hızlı Filtreler</h3>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="btn btn-secondary" onclick="filterCustomersByType('all')" id="filter-all">
+                            📋 Tümü
+                        </button>
+                        <button class="btn btn-secondary" onclick="filterCustomersByType('debt')" id="filter-debt">
+                            💳 Borçlu Müşteriler
+                        </button>
+                        <button class="btn btn-secondary" onclick="filterCustomersByType('credit')" id="filter-credit">
+                            💰 Alacaklı Müşteriler
+                        </button>
+                        <button class="btn btn-secondary" onclick="filterCustomersByType('zero')" id="filter-zero">
+                            ⚖️ Sıfır Bakiye
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Müşteri Listesi -->
+                <div style="max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px;">
+                    <div id="customer-search-results">
+                        <!-- Müşteriler buraya yüklenecek -->
+                    </div>
+                </div>
+
+                <!-- Alt Bilgiler -->
+                <div style="margin-top: 15px; padding: 12px; background: #f7fafc; border-radius: 6px; font-size: 12px; color: #4a5568;">
+                    <strong>💡 İpucu:</strong> Enter tuşu ile seçim yapabilir, Escape tuşu ile kapatabilirsiniz.
+                </div>
+
+                <!-- Alt Butonlar -->
+                <div style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <button class="btn btn-secondary" onclick="showAddCustomerModalFromSearch()">
+                            ➕ Yeni Müşteri Ekle
+                        </button>
+                    </div>
+                    <div>
+                        <button class="btn btn-secondary" onclick="closeModal('customer-search-modal')">
+                            ❌ Kapat
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="renderer.js"></script>
+</body>
+</html>
