@@ -108,11 +108,19 @@ function setupEventListeners() {
 // Set default dates
 function setDefaultDates() {
     const today = new Date();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(today.getDate() - 30);
     
-    document.getElementById('start-date').value = formatDateForInput(firstDay);
-    document.getElementById('end-date').value = formatDateForInput(lastDay);
+    document.getElementById('start-date').value = formatDateForInput(thirtyDaysAgo);
+    document.getElementById('end-date').value = formatDateForInput(today);
+    
+    // Set "Son 30 Gün" button as active by default
+    setTimeout(() => {
+        const last30DaysBtn = document.querySelector('[onclick="setQuickFilter(\'last30days\')"]');
+        if (last30DaysBtn) {
+            last30DaysBtn.classList.add('active');
+        }
+    }, 100);
 }
 
 // Format date for input
@@ -219,8 +227,7 @@ function clearCustomerDetails() {
     document.getElementById('last-payment-date').textContent = '-';
     
     // Clear transaction tables
-    document.getElementById('sales-table-body').innerHTML = '<tr><td colspan="6" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td></tr>';
-    document.getElementById('purchases-table-body').innerHTML = '<tr><td colspan="6" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td></tr>';
+    document.getElementById('sales-table-body').innerHTML = '<tr><td colspan="8" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td></tr>';
 }
 
 // Load transactions
@@ -232,8 +239,8 @@ async function loadTransactions(customerId) {
         sales = transactions.filter(t => t.type === 'debt');
         purchases = transactions.filter(t => t.type === 'payment');
         
-        displaySales();
-        displayPurchases();
+        // Tek tabloda birleştirilmiş işlemleri göster
+        displayAllTransactions();
         
         // Calculate totals
         const totalSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
@@ -262,25 +269,161 @@ async function loadTransactions(customerId) {
     }
 }
 
-// Display sales
-function displaySales() {
-    const tbody = document.getElementById('sales-table-body');
+// Display all transactions in a single table
+function displayAllTransactions() {
+    const salesTbody = document.getElementById('sales-table-body');
     
-    if (sales.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td></tr>';
+    // Hide filter totals when showing all transactions
+    hideFilterTotals();
+    
+    // Tüm işlemleri birleştir ve tarihe göre ters sırala (en son işlem en başta)
+    const allTransactions = [
+        ...sales.map(s => ({ ...s, transactionType: 'sale' })),
+        ...purchases.map(p => ({ ...p, transactionType: 'purchase' }))
+    ].sort((a, b) => {
+        const dateA = new Date(a.created_at);
+        const dateB = new Date(b.created_at);
+        
+        // Önce tarihe göre sırala (en yeni en başta)
+        if (dateA.getTime() !== dateB.getTime()) {
+            return dateB - dateA;
+        }
+        
+        // Aynı tarihteki işlemler için ID'ye göre sırala (en yeni en başta)
+        return b.id - a.id;
+    });
+    
+    if (allTransactions.length === 0) {
+        salesTbody.innerHTML = '<tr><td colspan="8" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td></tr>';
         return;
     }
     
-    tbody.innerHTML = sales.map(sale => {
-        const date = new Date(sale.created_at);
+    // Tek tabloda tüm işlemleri göster
+    salesTbody.innerHTML = allTransactions.map((transaction, index) => {
+        const date = new Date(transaction.created_at);
+        const isSale = transaction.transactionType === 'sale';
+        const amount = transaction.total_amount || transaction.amount || 0;
+        
+        // Bakiye hesaplama için işlemleri tarihe göre doğru sırala
+        const sortedForBalance = [
+            ...sales.map(s => ({ ...s, transactionType: 'sale' })),
+            ...purchases.map(p => ({ ...p, transactionType: 'purchase' }))
+        ].sort((a, b) => {
+            const dateA = new Date(a.created_at);
+            const dateB = new Date(b.created_at);
+            
+            // Önce tarihe göre sırala (en eski en başta)
+            if (dateA.getTime() !== dateB.getTime()) {
+                return dateA - dateB;
+            }
+            
+            // Aynı tarihteki işlemler için ID'ye göre sırala (en eski en başta)
+            return a.id - b.id;
+        });
+        
+        // Bu işlemin tarihine kadar olan tüm işlemleri bul ve bakiye hesapla
+        let cumulativeBalance = 0;
+        const transactionDate = new Date(transaction.created_at);
+        
+        for (const prevTransaction of sortedForBalance) {
+            const prevDate = new Date(prevTransaction.created_at);
+            
+            // Bu işlemden önceki tüm işlemleri dahil et (aynı tarih dahil değil)
+            if (prevDate < transactionDate) {
+                const prevAmount = prevTransaction.total_amount || prevTransaction.amount || 0;
+                
+                if (prevTransaction.transactionType === 'sale') {
+                    cumulativeBalance += prevAmount; // Satış = pozitif ekle
+                } else {
+                    cumulativeBalance -= prevAmount; // Tahsilat = negatif çıkar
+                }
+            }
+        }
+        
         return `
-            <tr data-transaction-id="${sale.id}" onclick="selectTransactionRow(this, 'sales')">
+            <tr data-transaction-id="${transaction.id}" data-transaction-type="${transaction.transactionType}" onclick="selectTransactionRow(this, '${transaction.transactionType}')">
                 <td>${date.getDate()}</td>
                 <td>${date.getMonth() + 1}</td>
                 <td>${date.getFullYear()}</td>
-                <td>${sale.description || sale.product_name || '-'}</td>
-                <td>${sale.quantity || 1}</td>
-                <td>${formatMoney(sale.total_amount || sale.amount)}</td>
+                <td>
+                    <span style="color: ${isSale ? '#e53e3e' : '#38a169'}; font-weight: 600;">
+                        ${isSale ? '💰 Satış' : '💳 Tahsilat'}
+                    </span>
+                </td>
+                <td>${transaction.description || transaction.product_name || '-'}</td>
+                <td>${transaction.quantity || 1}</td>
+                <td class="${isSale ? 'negative' : 'positive'}">
+                    ${isSale ? '+' : '-'}${formatMoney(amount)}
+                </td>
+                <td class="${cumulativeBalance > 0 ? 'negative' : cumulativeBalance < 0 ? 'positive' : 'neutral'}">
+                    ${formatMoney(cumulativeBalance)}
+            </tr>
+        `;
+    }).join('');
+}
+
+// Display filtered transactions in the single table
+function displayFilteredAllTransactions(filteredSales, filteredPurchases) {
+    const salesTbody = document.getElementById('sales-table-body');
+    
+    // Tüm filtrelenmiş işlemleri birleştir ve tarihe göre ters sırala (en son işlem en başta)
+    const allTransactions = [
+        ...filteredSales.map(s => ({ ...s, transactionType: 'sale' })),
+        ...filteredPurchases.map(p => ({ ...p, transactionType: 'purchase' }))
+    ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    
+    if (allTransactions.length === 0) {
+        salesTbody.innerHTML = '<tr><td colspan="8" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td></tr>';
+        return;
+    }
+    
+    // Tek tabloda tüm filtrelenmiş işlemleri göster
+    salesTbody.innerHTML = allTransactions.map((transaction, index) => {
+        const date = new Date(transaction.created_at);
+        const isSale = transaction.transactionType === 'sale';
+        const amount = transaction.total_amount || transaction.amount || 0;
+        
+        // Bakiye hesaplama için işlemleri tarihe göre doğru sırala
+        const sortedForBalance = [
+            ...filteredSales.map(s => ({ ...s, transactionType: 'sale' })),
+            ...filteredPurchases.map(p => ({ ...p, transactionType: 'purchase' }))
+        ].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        
+        // Bu işlemin tarihine kadar olan tüm işlemleri bul ve bakiye hesapla
+        const transactionDate = new Date(transaction.created_at);
+        let cumulativeBalance = 0;
+        
+        for (const prevTransaction of sortedForBalance) {
+            const prevDate = new Date(prevTransaction.created_at);
+            if (prevDate <= transactionDate) {
+                const prevAmount = prevTransaction.total_amount || prevTransaction.amount || 0;
+                
+                if (prevTransaction.transactionType === 'sale') {
+                    cumulativeBalance += prevAmount; // Satış = pozitif ekle
+                } else {
+                    cumulativeBalance -= prevAmount; // Tahsilat = negatif çıkar
+                }
+            }
+        }
+        
+        return `
+            <tr data-transaction-id="${transaction.id}" data-transaction-type="${transaction.transactionType}" onclick="selectTransactionRow(this, '${transaction.transactionType}')">
+                <td>${date.getDate()}</td>
+                <td>${date.getMonth() + 1}</td>
+                <td>${date.getFullYear()}</td>
+                <td>
+                    <span style="color: ${isSale ? '#e53e3e' : '#38a169'}; font-weight: 600;">
+                        ${isSale ? '💰 Satış' : '💳 Tahsilat'}
+                    </span>
+                </td>
+                <td>${transaction.description || transaction.product_name || '-'}</td>
+                <td>${transaction.quantity || 1}</td>
+                <td class="${isSale ? 'negative' : 'positive'}">
+                    ${isSale ? '+' : '-'}${formatMoney(amount)}
+                </td>
+                <td class="${cumulativeBalance > 0 ? 'negative' : cumulativeBalance < 0 ? 'positive' : 'neutral'}">
+                    ${formatMoney(cumulativeBalance)}
+                </td>
             </tr>
         `;
     }).join('');
@@ -298,7 +441,7 @@ function displayPurchases() {
     tbody.innerHTML = purchases.map(purchase => {
         const date = new Date(purchase.created_at);
         return `
-            <tr data-transaction-id="${purchase.id}" onclick="selectTransactionRow(this, 'purchases')">
+            <tr data-transaction-id="${purchase.id}" data-transaction-type="purchase" onclick="selectTransactionRow(this, 'purchases')">
                 <td>${date.getDate()}</td>
                 <td>${date.getMonth() + 1}</td>
                 <td>${date.getFullYear()}</td>
@@ -388,7 +531,7 @@ async function editSale() {
     }
     
     console.log('Getting selected transaction...');
-    const selectedSale = getSelectedTransaction('sales');
+    const selectedSale = getSelectedTransaction(); // Parametre kaldırıldı
     console.log('selectedSale result:', selectedSale);
     
     if (!selectedSale) {
@@ -447,7 +590,7 @@ function deleteSale() {
         return;
     }
     
-    const selectedSale = getSelectedTransaction('sales');
+    const selectedSale = getSelectedTransaction(); // Parametre kaldırıldı
     if (!selectedSale) {
         showNotification('Lütfen silmek istediğiniz satış işlemini seçin', 'warning');
         return;
@@ -471,7 +614,7 @@ async function editPurchase() {
     }
     
     console.log('Getting selected purchase transaction...');
-    const selectedPurchase = getSelectedTransaction('purchases');
+    const selectedPurchase = getSelectedTransaction(); // Parametre kaldırıldı
     console.log('selectedPurchase result:', selectedPurchase);
     
     if (!selectedPurchase) {
@@ -520,7 +663,7 @@ function deletePurchase() {
         return;
     }
     
-    const selectedPurchase = getSelectedTransaction('purchases');
+    const selectedPurchase = getSelectedTransaction(); // Parametre kaldırıldı
     if (!selectedPurchase) {
         showNotification('Lütfen silmek istediğiniz tahsilat işlemini seçin', 'warning');
         return;
@@ -532,10 +675,11 @@ function deletePurchase() {
 }
 
 // Get selected transaction from table
-function getSelectedTransaction(type) {
-    console.log('getSelectedTransaction called with type:', type);
+function getSelectedTransaction() {
+    console.log('getSelectedTransaction called');
     
-    const tableBody = document.getElementById(`${type}-table-body`);
+    // Artık tek tablo var, sales-table-body kullanıyoruz
+    const tableBody = document.getElementById('sales-table-body');
     console.log('tableBody:', tableBody);
     
     const selectedRow = tableBody.querySelector('tr.selected');
@@ -550,8 +694,12 @@ function getSelectedTransaction(type) {
     const transactionId = selectedRow.getAttribute('data-transaction-id');
     console.log('transactionId:', transactionId);
     
-    // Find transaction in the appropriate array
-    const transactions = type === 'sales' ? sales : purchases;
+    // Get transaction type from data attribute
+    const transactionType = selectedRow.getAttribute('data-transaction-type');
+    console.log('transactionType:', transactionType);
+    
+    // Find transaction in the appropriate array based on transaction type
+    const transactions = transactionType === 'sale' ? sales : purchases;
     console.log('transactions array:', transactions);
     
     const foundTransaction = transactions.find(t => t.id == transactionId);
@@ -596,8 +744,7 @@ async function handleEditSale(e) {
         id: formData.get('id'),
         customer_id: currentCustomer.id,
         type: 'sale',
-        date: formData.get('date'),
-        amount: parseFloat(formData.get('amount')),
+        created_at: formData.get('date'),
         description: formData.get('description') || 'Satış',
         product_id: formData.get('product_id') || null,
         quantity: 1,
@@ -640,8 +787,7 @@ async function handleEditPurchase(e) {
         id: formData.get('id'),
         customer_id: currentCustomer.id,
         type: 'purchase',
-        date: formData.get('date'),
-        amount: parseFloat(formData.get('amount')),
+        created_at: formData.get('date'),
         description: formData.get('description') || 'Tahsilat',
         quantity: 1,
         unit_price: parseFloat(formData.get('amount')),
@@ -713,13 +859,13 @@ function selectTransactionRow(row, type) {
     console.log('selectTransactionRow called with type:', type);
     console.log('row:', row);
     
-    // Remove previous selection
-    const tableBody = document.getElementById(`${type}-table-body`);
-    tableBody.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
+    // Remove previous selection from all transaction tables - doğru selector kullan
+    document.querySelectorAll('#sales-table-body tr').forEach(r => r.classList.remove('selected'));
     
     // Add selection to clicked row
     row.classList.add('selected');
     console.log('Row selected successfully');
+    console.log('Selected row classes:', row.classList.toString());
 }
 
 // Search customers
@@ -802,9 +948,108 @@ function filterTransactions() {
         return purchaseDate >= startDate && purchaseDate <= endDate;
     });
     
-    // Display filtered results
-    displayFilteredSales(filteredSales);
-    displayFilteredPurchases(filteredPurchases);
+    // Calculate totals for filtered data
+    const totalFilteredSales = filteredSales.reduce((sum, sale) => sum + (sale.total_amount || sale.amount || 0), 0);
+    const totalFilteredPayments = filteredPurchases.reduce((sum, purchase) => sum + (purchase.total_amount || purchase.amount || 0), 0);
+    const netFilteredBalance = totalFilteredSales - totalFilteredPayments;
+    
+    // Show filter totals
+    showFilterTotals(totalFilteredSales, totalFilteredPayments, netFilteredBalance);
+    
+    // Display filtered results in the single table
+    displayFilteredAllTransactions(filteredSales, filteredPurchases);
+}
+
+// Show filter totals
+function showFilterTotals(totalSales, totalPayments, netBalance) {
+    const filterTotalsDiv = document.getElementById('filter-totals');
+    const salesTotalSpan = document.getElementById('filtered-sales-total');
+    const paymentsTotalSpan = document.getElementById('filtered-payments-total');
+    const netTotalSpan = document.getElementById('filtered-net-total');
+    
+    if (filterTotalsDiv && salesTotalSpan && paymentsTotalSpan && netTotalSpan) {
+        salesTotalSpan.textContent = formatMoney(totalSales) + ' ₺';
+        paymentsTotalSpan.textContent = formatMoney(totalPayments) + ' ₺';
+        netTotalSpan.textContent = formatMoney(netBalance) + ' ₺';
+        
+        filterTotalsDiv.style.display = 'flex';
+    }
+}
+
+// Hide filter totals
+function hideFilterTotals() {
+    const filterTotalsDiv = document.getElementById('filter-totals');
+    if (filterTotalsDiv) {
+        filterTotalsDiv.style.display = 'none';
+    }
+}
+
+// Set quick filter dates
+function setQuickFilter(filterType) {
+    const today = new Date();
+    const startDateInput = document.getElementById('start-date');
+    const endDateInput = document.getElementById('end-date');
+    
+    // Remove active class from all buttons
+    document.querySelectorAll('.quick-filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Add active class to clicked button
+    event.target.classList.add('active');
+    
+    let startDate, endDate;
+    
+    switch (filterType) {
+        case 'today':
+            startDate = new Date(today);
+            endDate = new Date(today);
+            break;
+            
+        case 'yesterday':
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - 1);
+            endDate = new Date(startDate);
+            break;
+            
+        case 'last7days':
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - 7);
+            endDate = new Date(today);
+            break;
+            
+        case 'last30days':
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - 30);
+            endDate = new Date(today);
+            break;
+            
+        case 'thisMonth':
+            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            endDate = new Date(today);
+            break;
+            
+        case 'lastMonth':
+            startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+            break;
+            
+        case 'all':
+            // Set a very wide range to show all data
+            startDate = new Date('2020-01-01');
+            endDate = new Date('2030-12-31');
+            break;
+            
+        default:
+            return;
+    }
+    
+    // Format dates for input
+    startDateInput.value = startDate.toISOString().split('T')[0];
+    endDateInput.value = endDate.toISOString().split('T')[0];
+    
+    // Apply filter
+    filterTransactions();
 }
 
 // Display filtered sales
@@ -866,8 +1111,31 @@ function showModal(modalId) {
 }
 
 function closeModal(modalId) {
-    document.getElementById(modalId).classList.remove('active');
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.remove('active');
+        // Modal'ı DOM'dan kaldır
+        setTimeout(() => {
+            if (modal.parentNode) {
+                modal.parentNode.removeChild(modal);
+            }
+        }, 300); // CSS transition süresi kadar bekle
+    }
 }
+
+// ESC tuşu ile modal kapatma
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        // Aktif modal'ları bul ve kapat
+        const activeModals = document.querySelectorAll('.modal.active');
+        activeModals.forEach(modal => {
+            const modalId = modal.id;
+            if (modalId) {
+                closeModal(modalId);
+            }
+        });
+    }
+});
 
 // Add customer
 async function handleAddCustomer(e) {
@@ -1136,6 +1404,81 @@ async function addSale() {
             amountField.select();
         }
     }, 100);
+}
+
+// Tüm İşlemler için genel fonksiyonlar
+async function addTransaction() {
+    console.log('=== ADD TRANSACTION FUNCTION CALLED ===');
+    
+    if (!currentCustomer) {
+        showNotification('Önce bir müşteri seçin', 'error');
+        return;
+    }
+    
+    console.log('currentCustomer:', currentCustomer);
+    
+    // Satış ekleme modal'ını aç (varsayılan olarak satış)
+    await addSale();
+}
+
+async function editTransaction() {
+    console.log('=== EDIT TRANSACTION FUNCTION CALLED ===');
+    
+    if (!currentCustomer) {
+        showNotification('Önce bir müşteri seçin', 'error');
+        return;
+    }
+    
+    // Seçili satırı kontrol et - doğru selector kullan
+    const selectedRow = document.querySelector('#sales-table-body tr.selected');
+    console.log('selectedRow:', selectedRow);
+    
+    if (!selectedRow) {
+        showNotification('Düzenlemek için bir işlem seçin', 'warning');
+        return;
+    }
+    
+    const transactionType = selectedRow.getAttribute('data-transaction-type');
+    const transactionId = selectedRow.getAttribute('data-transaction-id');
+    
+    console.log('transactionType:', transactionType);
+    console.log('transactionId:', transactionId);
+    
+    if (transactionType === 'sale') {
+        await editSale();
+    } else if (transactionType === 'purchase') {
+        await editPurchase();
+    }
+}
+
+function deleteTransaction() {
+    console.log('=== DELETE TRANSACTION FUNCTION CALLED ===');
+    
+    if (!currentCustomer) {
+        showNotification('Önce bir müşteri seçin', 'error');
+        return;
+    }
+    
+    // Seçili satırı kontrol et - doğru selector kullan
+    const selectedRow = document.querySelector('#sales-table-body tr.selected');
+    console.log('selectedRow:', selectedRow);
+    
+    if (!selectedRow) {
+        showNotification('Silmek için bir işlem seçin', 'warning');
+        return;
+    }
+    
+    const transactionType = selectedRow.getAttribute('data-transaction-type');
+    const transactionId = selectedRow.getAttribute('data-transaction-id');
+    
+    console.log('transactionType:', transactionType);
+    console.log('transactionId:', transactionId);
+    
+    if (transactionType === 'sale') {
+        deleteSale();
+    } else if (transactionType === 'purchase') {
+        deletePurchase();
+    }
 }
 
 // Load products for sale dropdown
@@ -1939,34 +2282,36 @@ async function showBalanceTotal() {
             return;
         }
         
-        // Seçili müşterinin transaction'larını yükle
-        const customerTransactions = await ipcRenderer.invoke('get-transactions', currentCustomer.id);
-        
-        // Satış ve tahsilat işlemlerini ayır
-        const salesTransactions = customerTransactions.filter(t => t.type === 'debt');
-        const paymentTransactions = customerTransactions.filter(t => t.type === 'payment');
+        // Ana ekrandaki aynı veri kaynağını kullan (sales ve purchases global değişkenleri)
+        if (!sales || !purchases) {
+            showNotification('İşlem verileri yüklenmedi. Lütfen müşteriyi tekrar seçin.', 'warning');
+            return;
+        }
         
         // Toplamları hesapla
-        const totalSales = salesTransactions.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
-        const totalPayments = paymentTransactions.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
+        const totalSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
+        const totalPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
         const netBalance = totalSales - totalPayments;
         
         // İşlem sayıları
-        const salesCount = salesTransactions.length;
-        const paymentCount = paymentTransactions.length;
-        const totalTransactionCount = customerTransactions.length;
+        const salesCount = sales.length;
+        const paymentCount = purchases.length;
+        const totalTransactionCount = salesCount + paymentCount;
         
         // Son işlem tarihleri
-        const lastSaleDate = salesTransactions.length > 0 ? 
-            new Date(Math.max(...salesTransactions.map(s => new Date(s.date)))).toLocaleDateString('tr-TR') : '-';
-        const lastPaymentDate = paymentTransactions.length > 0 ? 
-            new Date(Math.max(...paymentTransactions.map(p => new Date(p.date)))).toLocaleDateString('tr-TR') : '-';
+        const lastSaleDate = sales.length > 0 ? 
+            new Date(Math.max(...sales.map(s => new Date(s.created_at)))).toLocaleDateString('tr-TR') : '-';
+        const lastPaymentDate = purchases.length > 0 ? 
+            new Date(Math.max(...purchases.map(p => new Date(p.created_at)))).toLocaleDateString('tr-TR') : '-';
         
         // Tahsilat oranı
         const paymentRate = totalSales > 0 ? ((totalPayments / totalSales) * 100) : 0;
         
-        // İşlem detayları (tarihe göre sıralı)
-        const allTransactionsSorted = customerTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+        // İşlem detayları (ana ekrandaki ile aynı sıralama)
+        const allTransactions = [
+            ...sales.map(s => ({ ...s, transactionType: 'sale' })),
+            ...purchases.map(p => ({ ...p, transactionType: 'purchase' }))
+        ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         
         // Modal olarak göster
         showDetailedBalanceModal({
@@ -1980,7 +2325,7 @@ async function showBalanceTotal() {
             lastSaleDate,
             lastPaymentDate,
             paymentRate,
-            transactions: allTransactionsSorted
+            transactions: allTransactions
         });
         
     } catch (error) {
@@ -2125,62 +2470,25 @@ function showDetailedBalanceModal(data) {
                     <!-- İşlem Dökümü -->
                     <div class="balance-details-section">
                         <div class="balance-details-title">İşlem Dökümü</div>
-                        <table class="customer-balance-table">
-                            <thead>
-                                <tr>
-                                    <th>Tarih</th>
-                                    <th>Tür</th>
-                                    <th>Açıklama</th>
-                                    <th>Tutar</th>
-                                    <th>Bakiye</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                         ${data.transactions.map(transaction => {
-                                             const isDebt = transaction.type === 'debt';
-                                             const amount = transaction.total_amount || transaction.amount || 0;
-                                             
-                                             // Tarih formatını düzelt
-                                             let formattedDate = '-';
-                                             try {
-                                                 const transactionDate = new Date(transaction.date);
-                                                 if (!isNaN(transactionDate.getTime())) {
-                                                     formattedDate = transactionDate.toLocaleDateString('tr-TR');
-                                                 }
-                                             } catch (e) {
-                                                 console.error('Tarih formatı hatası:', transaction.date);
-                                             }
-                                             
-                                             // Bakiye hesaplama - Doğru mantık: Satış ekle (+), Tahsilat çıkar (-)
-                                             let currentBalance = 0;
-                                             if (transaction.balance !== undefined && transaction.balance !== null) {
-                                                 currentBalance = transaction.balance;
-                                             } else {
-                                                 // Eğer bakiye yoksa, işlem tipine göre hesapla
-                                                 // Satış (debt) = pozitif bakiye, Tahsilat (payment) = negatif bakiye
-                                                 currentBalance = isDebt ? amount : -amount;
-                                             }
-                                             
-                                             return `
-                                                 <tr>
-                                                     <td>${formattedDate}</td>
-                                                     <td>
-                                                         <span style="color: ${isDebt ? '#e53e3e' : '#38a169'}; font-weight: 600;">
-                                                             ${isDebt ? '💰 Satış' : '💳 Tahsilat'}
-                                                         </span>
-                                                     </td>
-                                                     <td>${transaction.description || '-'}</td>
-                                                     <td class="${isDebt ? 'negative' : 'positive'}">
-                                                         ${isDebt ? '+' : '-'}${formatMoney(amount)}
-                                                     </td>
-                                                     <td class="${currentBalance > 0 ? 'negative' : currentBalance < 0 ? 'positive' : 'neutral'}">
-                                                         ${formatMoney(currentBalance)}
-                                                     </td>
-                                                 </tr>
-                                             `;
-                                         }).join('')}
-                            </tbody>
-                        </table>
+                        <div class="transaction-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Gün</th>
+                                        <th>Ay</th>
+                                        <th>Yıl</th>
+                                        <th>Tür</th>
+                                        <th>Açıklama</th>
+                                        <th>Miktar</th>
+                                        <th>Tutar</th>
+                                        <th>Bakiye</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="modal-transactions-table-body">
+                                    <!-- Ana ekrandaki tablo içeriği buraya gelecek -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                     
                     <!-- Alt Bilgiler -->
@@ -2227,6 +2535,16 @@ function showDetailedBalanceModal(data) {
     
     // Modal'ı body'e ekle
     document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Modal açıldıktan sonra ana ekrandaki tablo içeriğini modal'daki tabloya kopyala
+    setTimeout(() => {
+        const mainTableBody = document.getElementById('sales-table-body');
+        const modalTableBody = document.getElementById('modal-transactions-table-body');
+        
+        if (mainTableBody && modalTableBody) {
+            modalTableBody.innerHTML = mainTableBody.innerHTML;
+        }
+    }, 100);
 }
 
 // Bakiye modal'ını kapat
@@ -2239,9 +2557,9 @@ function closeBalanceModal() {
 
 // Bakiye raporunu yazdır
 function printBalanceReport() {
-    const modal = document.getElementById('balance-modal');
-    if (!modal) {
-        showNotification('Rapor bulunamadı', 'error');
+    // Seçili müşteri kontrolü
+    if (!currentCustomer) {
+        showNotification('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     
@@ -2250,29 +2568,66 @@ function printBalanceReport() {
         const currentTime = currentDate.toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'});
         const currentDateStr = currentDate.toLocaleDateString('tr-TR');
         
-        // Modal'dan verileri al
-        const salesCard = modal.querySelector('.balance-summary-card.sales .balance-card-value')?.textContent || '0,00';
-        const paymentsCard = modal.querySelector('.balance-summary-card.payments .balance-card-value')?.textContent || '0,00';
-        const netCard = modal.querySelector('.balance-summary-card.net .balance-card-value')?.textContent || '0,00';
-        const paymentRateCard = modal.querySelector('.balance-summary-card.debt .balance-card-value')?.textContent || '0%';
+        // Ana ekrandaki tablodan direkt veri çek
+        const mainTableBody = document.getElementById('sales-table-body');
+        if (!mainTableBody) {
+            showNotification('Ana ekrandaki tablo bulunamadı. Lütfen müşteriyi tekrar seçin.', 'warning');
+            return;
+        }
         
-        // İstatistikleri al
-        const stats = Array.from(modal.querySelectorAll('.balance-stat-item')).map(item => ({
-            label: item.querySelector('.balance-stat-label')?.textContent || '',
-            value: item.querySelector('.balance-stat-value')?.textContent || ''
-        }));
+        const customerName = currentCustomer.name;
         
-        // İşlem tablosunu al
-        const transactionRows = Array.from(modal.querySelectorAll('.customer-balance-table tbody tr')).map(row => {
-            const cells = Array.from(row.querySelectorAll('td'));
-            return {
-                date: cells[0]?.textContent || '',
-                type: cells[1]?.textContent || '',
-                description: cells[2]?.textContent || '',
-                amount: cells[3]?.textContent || '',
-                balance: cells[4]?.textContent || ''
-            };
+        // Ana ekrandaki tablodan satırları al
+        const tableRows = mainTableBody.querySelectorAll('tr');
+        const transactionRows = [];
+        
+        // Her satırdan veri çıkar
+        tableRows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 8 && !row.classList.contains('no-data')) {
+                const day = cells[0].textContent.trim();
+                const month = cells[1].textContent.trim();
+                const year = cells[2].textContent.trim();
+                const typeRaw = cells[3].textContent.trim();
+                const type = typeRaw.includes('Satış') ? 'Satış' : 'Tahsilat';
+                const description = cells[4].textContent.trim();
+                const quantity = cells[5].textContent.trim();
+                const amount = cells[6].textContent.trim();
+                const balance = cells[7].textContent.trim();
+                
+                transactionRows.push({
+                    date: `${day}.${month}.${year}`,
+                    type: type,
+                    description: description,
+                    quantity: quantity,
+                    amount: amount,
+                    balance: balance
+                });
+            }
         });
+        
+        // Toplamları hesapla (ana ekrandaki tablodan)
+        let totalSales = 0;
+        let totalPayments = 0;
+        
+        transactionRows.forEach(row => {
+            const amountText = row.amount.replace(/[^\d,]/g, '').replace(',', '.');
+            const amount = parseFloat(amountText) || 0;
+            
+            if (row.type.includes('Satış')) {
+                totalSales += amount;
+            } else if (row.type.includes('Tahsilat')) {
+                totalPayments += amount;
+            }
+        });
+        
+        const netBalance = totalSales - totalPayments;
+        const paymentRate = totalSales > 0 ? ((totalPayments / totalSales) * 100) : 0;
+        
+        // İstatistikleri hesapla
+        const salesCount = transactionRows.filter(row => row.type.includes('Satış')).length;
+        const paymentCount = transactionRows.filter(row => row.type.includes('Tahsilat')).length;
+        const totalTransactionCount = transactionRows.length;
         
         const printWindow = window.open('', '_blank');
         printWindow.document.write(`
@@ -2417,56 +2772,62 @@ function printBalanceReport() {
                 <div class="summary-cards">
                     <div class="summary-card">
                         <div class="summary-card-title">💰 Toplam Satis</div>
-                        <div class="summary-card-value">${salesCard}</div>
+                        <div class="summary-card-value">${formatMoney(totalSales)}</div>
                     </div>
                     <div class="summary-card">
                         <div class="summary-card-title">💳 Toplam Tahsilat</div>
-                        <div class="summary-card-value">${paymentsCard}</div>
+                        <div class="summary-card-value">${formatMoney(totalPayments)}</div>
                     </div>
                     <div class="summary-card">
                         <div class="summary-card-title">⚖️ Net Bakiye</div>
-                        <div class="summary-card-value">${netCard}</div>
+                        <div class="summary-card-value">${formatMoney(netBalance)}</div>
                     </div>
                     <div class="summary-card">
                         <div class="summary-card-title">📊 Tahsilat Orani</div>
-                        <div class="summary-card-value">${paymentRateCard}</div>
+                        <div class="summary-card-value">${paymentRate.toFixed(2)}%</div>
                     </div>
                 </div>
                 
                 <div class="stats-grid">
-                    ${stats.map(stat => `
-                        <div class="stat-item">
-                            <div class="stat-label">${stat.label}</div>
-                            <div class="stat-value">${stat.value}</div>
-                        </div>
-                    `).join('')}
+                    <div class="stat-item">
+                        <div class="stat-label">Toplam Satis Sayisi</div>
+                        <div class="stat-value">${salesCount}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Toplam Tahsilat Sayisi</div>
+                        <div class="stat-value">${paymentCount}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Toplam Islem Sayisi</div>
+                        <div class="stat-value">${totalTransactionCount}</div>
+                    </div>
                 </div>
                 
                 <table class="customer-table">
                     <thead>
                         <tr>
-                            <th>Tarih</th>
-                            <th>Tur</th>
-                            <th>Aciklama</th>
+                            <th>Gün</th>
+                            <th>Ay</th>
+                            <th>Yıl</th>
+                            <th>Tür</th>
+                            <th>Açıklama</th>
+                            <th>Miktar</th>
                             <th>Tutar</th>
                             <th>Bakiye</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${transactionRows.map(transaction => {
-                            // Tarih formatını düzelt
-                            let formattedDate = transaction.date;
-                            if (transaction.date === 'Invalid Date' || transaction.date === '-') {
-                                formattedDate = '-';
-                            }
-                            
+                        ${transactionRows.map((transaction, index) => {
                             return `
                                 <tr>
-                                    <td>${formattedDate}</td>
+                                    <td>${transaction.date.split('.')[0]}</td>
+                                    <td>${transaction.date.split('.')[1]}</td>
+                                    <td>${transaction.date.split('.')[2]}</td>
                                     <td>${transaction.type}</td>
                                     <td>${transaction.description}</td>
-                                    <td class="${transaction.amount.includes('+') ? 'negative' : transaction.amount.includes('-') ? 'positive' : 'neutral'}">${transaction.amount}</td>
-                                    <td class="${transaction.balance.includes('-') ? 'negative' : transaction.balance === '0,00' ? 'neutral' : 'positive'}">${transaction.balance}</td>
+                                    <td>${transaction.quantity}</td>
+                                    <td>${transaction.amount}</td>
+                                    <td>${transaction.balance}</td>
                                 </tr>
                             `;
                         }).join('')}
@@ -2500,6 +2861,7 @@ function printBalanceReport() {
 function fixTurkishCharsForPDF(text) {
     if (!text) return text;
     return text
+        // Türkçe karakterleri düzelt
         .replace(/ı/g, 'i')
         .replace(/İ/g, 'I')
         .replace(/ğ/g, 'g')
@@ -2512,7 +2874,14 @@ function fixTurkishCharsForPDF(text) {
         .replace(/Ö/g, 'O')
         .replace(/ç/g, 'c')
         .replace(/Ç/g, 'C')
+        // Bozuk karakterleri düzelt
         .replace(/Ø/g, 'O')
+        .replace(/1_/g, 'ış')
+        .replace(/1/g, 'ı')
+        .replace(/_/g, 'ş')
+        .replace(/\^ti\./g, 'Şti.')
+        .replace(/Dan1_manl1k/g, 'Danışmanlık')
+        .replace(/Mü_teri/g, 'Müşteri')
         .replace(/°/g, 'o')
         .replace(/§/g, 's')
         .replace(/=/g, '')
@@ -2523,9 +2892,9 @@ function fixTurkishCharsForPDF(text) {
 
 // Bakiye raporunu PDF'e aktar
 function exportBalanceToPDF() {
-    const modal = document.getElementById('balance-modal');
-    if (!modal) {
-        showNotification('Rapor bulunamadı', 'error');
+    // Seçili müşteri kontrolü
+    if (!currentCustomer) {
+        showNotification('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     
@@ -2534,30 +2903,66 @@ function exportBalanceToPDF() {
         const currentTime = currentDate.toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'});
         const currentDateStr = currentDate.toLocaleDateString('tr-TR');
         
-        // Modal'dan verileri al
-        const customerName = modal.querySelector('.modal-header h2')?.textContent.replace('📊 ', '').replace(' - CARİ HESAP ÖZETİ', '') || 'Musteri';
-        const salesCard = modal.querySelector('.balance-summary-card.sales .balance-card-value')?.textContent || '0,00';
-        const paymentsCard = modal.querySelector('.balance-summary-card.payments .balance-card-value')?.textContent || '0,00';
-        const netCard = modal.querySelector('.balance-summary-card.net .balance-card-value')?.textContent || '0,00';
-        const paymentRateCard = modal.querySelector('.balance-summary-card.debt .balance-card-value')?.textContent || '0%';
+        // Ana ekrandaki tablodan direkt veri çek
+        const mainTableBody = document.getElementById('sales-table-body');
+        if (!mainTableBody) {
+            showNotification('Ana ekrandaki tablo bulunamadı. Lütfen müşteriyi tekrar seçin.', 'warning');
+            return;
+        }
         
-        // İstatistikleri al
-        const stats = Array.from(modal.querySelectorAll('.balance-stat-item')).map(item => ({
-            label: item.querySelector('.balance-stat-label').textContent,
-            value: item.querySelector('.balance-stat-value').textContent
-        }));
+        const customerName = currentCustomer.name;
         
-        // İşlem tablosunu al
-        const transactionRows = Array.from(modal.querySelectorAll('.customer-balance-table tbody tr')).map(row => {
-            const cells = Array.from(row.querySelectorAll('td'));
-            return {
-                date: cells[0].textContent,
-                type: cells[1].textContent,
-                description: cells[2].textContent,
-                amount: cells[3].textContent,
-                balance: cells[4].textContent
-            };
+        // Ana ekrandaki tablodan satırları al
+        const tableRows = mainTableBody.querySelectorAll('tr');
+        const transactionRows = [];
+        
+        // Her satırdan veri çıkar
+        tableRows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 8 && !row.classList.contains('no-data')) {
+                const day = cells[0].textContent.trim();
+                const month = cells[1].textContent.trim();
+                const year = cells[2].textContent.trim();
+                const typeRaw = cells[3].textContent.trim();
+                const type = typeRaw.includes('Satış') ? 'Satış' : 'Tahsilat';
+                const description = cells[4].textContent.trim();
+                const quantity = cells[5].textContent.trim();
+                const amount = cells[6].textContent.trim();
+                const balance = cells[7].textContent.trim();
+                
+                transactionRows.push({
+                    date: `${day}.${month}.${year}`,
+                    type: type,
+                    description: description,
+                    quantity: quantity,
+                    amount: amount,
+                    balance: balance
+                });
+            }
         });
+        
+        // Toplamları hesapla (ana ekrandaki tablodan)
+        let totalSales = 0;
+        let totalPayments = 0;
+        
+        transactionRows.forEach(row => {
+            const amountText = row.amount.replace(/[^\d,]/g, '').replace(',', '.');
+            const amount = parseFloat(amountText) || 0;
+            
+            if (row.type.includes('Satış')) {
+                totalSales += amount;
+            } else if (row.type.includes('Tahsilat')) {
+                totalPayments += amount;
+            }
+        });
+        
+        const netBalance = totalSales - totalPayments;
+        const paymentRate = totalSales > 0 ? ((totalPayments / totalSales) * 100) : 0;
+        
+        // İstatistikleri hesapla
+        const salesCount = transactionRows.filter(row => row.type.includes('Satış')).length;
+        const paymentCount = transactionRows.filter(row => row.type.includes('Tahsilat')).length;
+        const totalTransactionCount = transactionRows.length;
         
         // PDF oluştur
         const { jsPDF } = window.jspdf;
@@ -2601,10 +3006,10 @@ function exportBalanceToPDF() {
         yPosition += 10;
         
         const summaryData = [
-            ['Toplam Satis', salesCard],
-            ['Toplam Tahsilat', paymentsCard],
-            ['Net Bakiye', netCard],
-            ['Tahsilat Orani', paymentRateCard]
+            ['Toplam Satis', formatMoney(totalSales)],
+            ['Toplam Tahsilat', formatMoney(totalPayments)],
+            ['Net Bakiye', formatMoney(netBalance)],
+            ['Tahsilat Orani', `${paymentRate.toFixed(2)}%`]
         ];
         
         doc.autoTable({
@@ -2639,7 +3044,11 @@ function exportBalanceToPDF() {
         doc.text('ISLEM ISTATISTIKLERI', 20, yPosition);
         yPosition += 10;
         
-        const statsData = stats.map(stat => [fixTurkishCharsForPDF(stat.label), stat.value]);
+        const statsData = [
+            ['Toplam Satis Sayisi', salesCount.toString()],
+            ['Toplam Tahsilat Sayisi', paymentCount.toString()],
+            ['Toplam Islem Sayisi', totalTransactionCount.toString()]
+        ];
         
         doc.autoTable({
             startY: yPosition,
@@ -2673,17 +3082,14 @@ function exportBalanceToPDF() {
         doc.text('ISLEM DOKUMU', 20, yPosition);
         yPosition += 10;
         
-        const transactionData = transactionRows.map(row => {
-            // Tarih formatını düzelt
-            let formattedDate = row.date;
-            if (row.date === 'Invalid Date' || row.date === '-') {
-                formattedDate = '-';
-            }
-            
+        const transactionData = transactionRows.map((row, index) => {
             return [
-                formattedDate,
+                row.date.split('.')[0], // Gün
+                row.date.split('.')[1], // Ay
+                row.date.split('.')[2], // Yıl
                 fixTurkishCharsForPDF(row.type),
                 fixTurkishCharsForPDF(row.description),
+                row.quantity,
                 row.amount,
                 row.balance
             ];
@@ -2691,7 +3097,7 @@ function exportBalanceToPDF() {
         
         doc.autoTable({
             startY: yPosition,
-            head: [['Tarih', 'Tur', 'Aciklama', 'Tutar', 'Bakiye']],
+            head: [['Gün', 'Ay', 'Yıl', 'Tür', 'Açıklama', 'Miktar', 'Tutar', 'Bakiye']],
             body: transactionData,
             theme: 'striped',
             headStyles: { 
@@ -2705,11 +3111,14 @@ function exportBalanceToPDF() {
                 cellPadding: 3
             },
             columnStyles: {
-                0: { cellWidth: 25, halign: 'center' },
-                1: { cellWidth: 20, halign: 'center' },
-                2: { cellWidth: 40, halign: 'left' },
-                3: { cellWidth: 25, halign: 'right', fontStyle: 'bold' },
-                4: { cellWidth: 25, halign: 'right', fontStyle: 'bold' }
+                0: { cellWidth: 20, halign: 'center' }, // Gün
+                1: { cellWidth: 20, halign: 'center' }, // Ay
+                2: { cellWidth: 30, halign: 'center' }, // Yıl
+                3: { cellWidth: 30, halign: 'left' },   // Tür
+                4: { cellWidth: 40, halign: 'left' },   // Açıklama
+                5: { cellWidth: 25, halign: 'center' }, // Miktar
+                6: { cellWidth: 30, halign: 'right' },  // Tutar
+                7: { cellWidth: 30, halign: 'right' }   // Bakiye
             },
             alternateRowStyles: {
                 fillColor: [248, 249, 250]
@@ -2745,9 +3154,9 @@ function exportBalanceToPDF() {
 
 // Bakiye raporunu Excel'e aktar
 function exportBalanceToExcel() {
-    const modal = document.getElementById('balance-modal');
-    if (!modal) {
-        showNotification('Rapor bulunamadı', 'error');
+    // Seçili müşteri kontrolü
+    if (!currentCustomer) {
+        showNotification('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     
@@ -2756,30 +3165,66 @@ function exportBalanceToExcel() {
         const currentTime = currentDate.toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'});
         const currentDateStr = currentDate.toLocaleDateString('tr-TR');
         
-        // Modal'dan verileri al
-        const customerName = modal.querySelector('.modal-header h2')?.textContent.replace('📊 ', '').replace(' - CARİ HESAP ÖZETİ', '') || 'Musteri';
-        const salesCard = modal.querySelector('.balance-summary-card.sales .balance-card-value')?.textContent || '0,00';
-        const paymentsCard = modal.querySelector('.balance-summary-card.payments .balance-card-value')?.textContent || '0,00';
-        const netCard = modal.querySelector('.balance-summary-card.net .balance-card-value')?.textContent || '0,00';
-        const paymentRateCard = modal.querySelector('.balance-summary-card.debt .balance-card-value')?.textContent || '0%';
+        // Ana ekrandaki tablodan direkt veri çek
+        const mainTableBody = document.getElementById('sales-table-body');
+        if (!mainTableBody) {
+            showNotification('Ana ekrandaki tablo bulunamadı. Lütfen müşteriyi tekrar seçin.', 'warning');
+            return;
+        }
         
-        // İstatistikleri al
-        const stats = Array.from(modal.querySelectorAll('.balance-stat-item')).map(item => ({
-            label: item.querySelector('.balance-stat-label')?.textContent || '',
-            value: item.querySelector('.balance-stat-value')?.textContent || ''
-        }));
+        const customerName = currentCustomer.name;
         
-        // İşlem tablosunu al
-        const transactionRows = Array.from(modal.querySelectorAll('.customer-balance-table tbody tr')).map(row => {
-            const cells = Array.from(row.querySelectorAll('td'));
-            return {
-                date: cells[0]?.textContent || '',
-                type: cells[1]?.textContent || '',
-                description: cells[2]?.textContent || '',
-                amount: cells[3]?.textContent || '',
-                balance: cells[4]?.textContent || ''
-            };
+        // Ana ekrandaki tablodan satırları al
+        const tableRows = mainTableBody.querySelectorAll('tr');
+        const transactionRows = [];
+        
+        // Her satırdan veri çıkar
+        tableRows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 8 && !row.classList.contains('no-data')) {
+                const day = cells[0].textContent.trim();
+                const month = cells[1].textContent.trim();
+                const year = cells[2].textContent.trim();
+                const typeRaw = cells[3].textContent.trim();
+                const type = typeRaw.includes('Satış') ? 'Satış' : 'Tahsilat';
+                const description = cells[4].textContent.trim();
+                const quantity = cells[5].textContent.trim();
+                const amount = cells[6].textContent.trim();
+                const balance = cells[7].textContent.trim();
+                
+                transactionRows.push({
+                    date: `${day}.${month}.${year}`,
+                    type: type,
+                    description: description,
+                    quantity: quantity,
+                    amount: amount,
+                    balance: balance
+                });
+            }
         });
+        
+        // Toplamları hesapla (ana ekrandaki tablodan)
+        let totalSales = 0;
+        let totalPayments = 0;
+        
+        transactionRows.forEach(row => {
+            const amountText = row.amount.replace(/[^\d,]/g, '').replace(',', '.');
+            const amount = parseFloat(amountText) || 0;
+            
+            if (row.type.includes('Satış')) {
+                totalSales += amount;
+            } else if (row.type.includes('Tahsilat')) {
+                totalPayments += amount;
+            }
+        });
+        
+        const netBalance = totalSales - totalPayments;
+        const paymentRate = totalSales > 0 ? ((totalPayments / totalSales) * 100) : 0;
+        
+        // İstatistikleri hesapla
+        const salesCount = transactionRows.filter(row => row.type.includes('Satış')).length;
+        const paymentCount = transactionRows.filter(row => row.type.includes('Tahsilat')).length;
+        const totalTransactionCount = transactionRows.length;
         
         // CSV formatında veri oluştur - Profesyonel format
         let csvContent = '\uFEFF'; // UTF-8 BOM
@@ -2793,34 +3238,28 @@ function exportBalanceToExcel() {
         csvContent += 'FINANSAL OZET\n';
         csvContent += '='.repeat(50) + '\n';
         csvContent += 'Kategori,Tutar\n';
-        csvContent += `Toplam Satis,"${salesCard.replace(/[^\d,.-]/g, '')}"\n`;
-        csvContent += `Toplam Tahsilat,"${paymentsCard.replace(/[^\d,.-]/g, '')}"\n`;
-        csvContent += `Net Bakiye,"${netCard.replace(/[^\d,.-]/g, '')}"\n`;
-        csvContent += `Tahsilat Orani,"${paymentRateCard}"\n\n`;
+        csvContent += `Toplam Satis,"${formatMoney(totalSales)}"\n`;
+        csvContent += `Toplam Tahsilat,"${formatMoney(totalPayments)}"\n`;
+        csvContent += `Net Bakiye,"${formatMoney(netBalance)}"\n`;
+        csvContent += `Tahsilat Orani,"${paymentRate.toFixed(2)}%"\n\n`;
         
         // İstatistikler - Profesyonel format
         csvContent += '='.repeat(50) + '\n';
         csvContent += 'ISLEM ISTATISTIKLERI\n';
         csvContent += '='.repeat(50) + '\n';
         csvContent += 'Istatistik,Deger\n';
-        stats.forEach(stat => {
-            csvContent += `"${fixTurkishCharsForPDF(stat.label)}","${stat.value}"\n`;
-        });
-        csvContent += '\n';
+        csvContent += `"Toplam Satis Sayisi","${salesCount}"\n`;
+        csvContent += `"Toplam Tahsilat Sayisi","${paymentCount}"\n`;
+        csvContent += `"Toplam Islem Sayisi","${totalTransactionCount}"\n\n`;
         
-        // İşlem dökümü - Profesyonel format
+        // İşlem dökümü - Ana ekrandaki tablo ile aynı
         csvContent += '='.repeat(80) + '\n';
         csvContent += 'ISLEM DOKUMU\n';
         csvContent += '='.repeat(80) + '\n';
-        csvContent += 'Tarih,Tur,Aciklama,Tutar,Bakiye\n';
-        transactionRows.forEach(transaction => {
-            // Tarih formatını düzelt
-            let formattedDate = transaction.date;
-            if (transaction.date === 'Invalid Date' || transaction.date === '-') {
-                formattedDate = '-';
-            }
-            
-            csvContent += `"${formattedDate}","${fixTurkishCharsForPDF(transaction.type)}","${fixTurkishCharsForPDF(transaction.description)}","${transaction.amount}","${transaction.balance}"\n`;
+        csvContent += 'Gun,Ay,Yil,Tur,Aciklama,Miktar,Tutar,Bakiye\n';
+        
+        transactionRows.forEach(row => {
+            csvContent += `"${row.date.split('.')[0]}","${row.date.split('.')[1]}","${row.date.split('.')[2]}","${fixTurkishCharsForPDF(row.type)}","${fixTurkishCharsForPDF(row.description)}","${row.quantity}","${row.amount}","${row.balance}"\n`;
         });
         
         csvContent += '\n' + '='.repeat(80) + '\n';
@@ -2849,61 +3288,101 @@ function exportBalanceToExcel() {
 
 // Bakiye raporunu panoya kopyala
 function copyBalanceToClipboard() {
-    const modal = document.getElementById('balance-modal');
-    if (modal) {
+    // Seçili müşteri kontrolü
+    if (!currentCustomer) {
+        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        return;
+    }
+    
+    try {
         const currentDate = new Date();
         const currentTime = currentDate.toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'});
         const currentDateStr = currentDate.toLocaleDateString('tr-TR');
         
-        // Modal'dan verileri al
-        const salesCard = modal.querySelector('.balance-summary-card.sales .balance-card-value').textContent;
-        const paymentsCard = modal.querySelector('.balance-summary-card.payments .balance-card-value').textContent;
-        const debtCard = modal.querySelector('.balance-summary-card.debt .balance-card-value').textContent;
-        const netCard = modal.querySelector('.balance-summary-card.net .balance-card-value').textContent;
+        // Ana ekrandaki tablodan direkt veri çek
+        const mainTableBody = document.getElementById('sales-table-body');
+        if (!mainTableBody) {
+            showNotification('Ana ekrandaki tablo bulunamadı. Lütfen müşteriyi tekrar seçin.', 'warning');
+            return;
+        }
         
-        // İstatistikleri al
-        const stats = Array.from(modal.querySelectorAll('.balance-stat-item')).map(item => ({
-            label: item.querySelector('.balance-stat-label').textContent,
-            value: item.querySelector('.balance-stat-value').textContent
-        }));
+        const customerName = currentCustomer.name;
         
-        // Müşteri tablosunu al
-        const customerRows = Array.from(modal.querySelectorAll('.customer-balance-table tbody tr')).map(row => {
-            const cells = Array.from(row.querySelectorAll('td'));
-            return {
-                name: cells[0].textContent,
-                code: cells[1].textContent,
-                sales: cells[2].textContent,
-                payments: cells[3].textContent,
-                balance: cells[4].textContent,
-                status: cells[5].textContent.trim()
-            };
+        // Ana ekrandaki tablodan satırları al
+        const tableRows = mainTableBody.querySelectorAll('tr');
+        const transactionRows = [];
+        
+        // Her satırdan veri çıkar
+        tableRows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 8 && !row.classList.contains('no-data')) {
+                const day = cells[0].textContent.trim();
+                const month = cells[1].textContent.trim();
+                const year = cells[2].textContent.trim();
+                const typeRaw = cells[3].textContent.trim();
+                const type = typeRaw.includes('Satış') ? 'Satış' : 'Tahsilat';
+                const description = cells[4].textContent.trim();
+                const quantity = cells[5].textContent.trim();
+                const amount = cells[6].textContent.trim();
+                const balance = cells[7].textContent.trim();
+                
+                transactionRows.push({
+                    date: `${day}.${month}.${year}`,
+                    type: type,
+                    description: description,
+                    quantity: quantity,
+                    amount: amount,
+                    balance: balance
+                });
+            }
         });
         
-        // Kopyalanacak metni oluştur
-        let copyText = `ETIC AJANS - CARI HESAP OZETI\n`;
-        copyText += `Rapor Tarihi: ${currentDateStr} ${currentTime}\n\n`;
+        // Toplamları hesapla (ana ekrandaki tablodan)
+        let totalSales = 0;
+        let totalPayments = 0;
         
-        copyText += `FINANSAL OZET:\n`;
-        copyText += `💰 Toplam Satis: ${salesCard}\n`;
-        copyText += `💳 Toplam Tahsilat: ${paymentsCard}\n`;
-        copyText += `📋 Toplam Borc: ${debtCard}\n`;
-        copyText += `⚖️ Net Bakiye: ${netCard}\n\n`;
-        
-        copyText += `MUSTERI ISTATISTIKLERI:\n`;
-        stats.forEach(stat => {
-            copyText += `• ${fixTurkishCharsForPDF(stat.label)}: ${stat.value}\n`;
-        });
-        copyText += `\n`;
-        
-        copyText += `MUSTERI BAKIYE DETAYLARI:\n`;
-        copyText += `Musteri Adi\tKod\tSatis\tTahsilat\tBakiye\tDurum\n`;
-        copyText += `─`.repeat(80) + `\n`;
-        customerRows.forEach(customer => {
-            copyText += `${fixTurkishCharsForPDF(customer.name)}\t${customer.code}\t${customer.sales}\t${customer.payments}\t${customer.balance}\t${customer.status}\n`;
+        transactionRows.forEach(row => {
+            const amountText = row.amount.replace(/[^\d,]/g, '').replace(',', '.');
+            const amount = parseFloat(amountText) || 0;
+            
+            if (row.type.includes('Satış')) {
+                totalSales += amount;
+            } else if (row.type.includes('Tahsilat')) {
+                totalPayments += amount;
+            }
         });
         
-        copyText += `\nBu rapor Etic Ajans Veresiye Takip Sistemi tarafindan otomatik olarak olusturulmustur.`;
+        const netBalance = totalSales - totalPayments;
+        const paymentRate = totalSales > 0 ? ((totalPayments / totalSales) * 100) : 0;
+        
+        // İstatistikleri hesapla
+        const salesCount = transactionRows.filter(row => row.type.includes('Satış')).length;
+        const paymentCount = transactionRows.filter(row => row.type.includes('Tahsilat')).length;
+        const totalTransactionCount = transactionRows.length;
+        
+    // Kopyalanacak metni oluştur
+    let copyText = `ETIC AJANS - ${customerName} - CARI HESAP OZETI\n`;
+    copyText += `Rapor Tarihi: ${currentDateStr} ${currentTime}\n\n`;
+    
+    copyText += `FINANSAL OZET:\n`;
+    copyText += `💰 Toplam Satis: ${formatMoney(totalSales)}\n`;
+    copyText += `💳 Toplam Tahsilat: ${formatMoney(totalPayments)}\n`;
+    copyText += `⚖️ Net Bakiye: ${formatMoney(netBalance)}\n\n`;
+    
+    copyText += `MUSTERI ISTATISTIKLERI:\n`;
+    copyText += `• Toplam Satis Sayisi: ${salesCount}\n`;
+    copyText += `• Toplam Tahsilat Sayisi: ${paymentCount}\n`;
+    copyText += `• Toplam Islem Sayisi: ${totalTransactionCount}\n`;
+    copyText += `\n`;
+    
+    copyText += `ISLEM DOKUMU:\n`;
+    copyText += `Gun\tAy\tYil\tTur\tAciklama\tMiktar\tTutar\tBakiye\n`;
+    copyText += `─`.repeat(80) + `\n`;
+    transactionRows.forEach((transaction, index) => {
+        copyText += `${transaction.date.split('.')[0]}\t${transaction.date.split('.')[1]}\t${transaction.date.split('.')[2]}\t${transaction.type}\t${transaction.description}\t${transaction.quantity}\t${transaction.amount}\t${transaction.balance}\n`;
+    });
+    
+    copyText += `\nBu rapor Etic Ajans Veresiye Takip Sistemi tarafindan otomatik olarak olusturulmustur.`;
         
         // Clipboard API kullanarak kopyala
         if (navigator.clipboard) {
@@ -2915,6 +3394,10 @@ function copyBalanceToClipboard() {
         } else {
             fallbackCopyToClipboard(copyText);
         }
+        
+    } catch (error) {
+        console.error('Kopyalama hatası:', error);
+        showNotification('Kopyalama sırasında hata oluştu', 'error');
     }
 }
 
@@ -2943,61 +3426,747 @@ function fallbackCopyToClipboard(text) {
 function showReportsModal() {
     const modalHtml = `
         <div id="reports-modal" class="modal active">
-            <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
                 <div class="modal-header">
                     <h2>📊 Raporlar ve Analizler</h2>
                     <button class="close-btn" onclick="closeModal('reports-modal')">&times;</button>
                 </div>
                 <div style="padding: 20px;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                        <!-- Sol Kolon -->
-                        <div>
-                            <h3 style="color: #4a5568; margin-bottom: 15px; font-size: 14px;">📈 Finansal Raporlar</h3>
-                            <div style="display: flex; flex-direction: column; gap: 8px;">
-                                <button class="btn btn-primary" onclick="generateFinancialReport()">
-                                    💰 Finansal Özet Raporu
+                    <!-- Rapor Kategorileri -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 30px;">
+                        <!-- Sol Kolon - Finansal Raporlar -->
+                        <div class="report-category">
+                            <h3 style="color: #2d3748; margin-bottom: 15px; font-size: 16px; font-weight: 600; border-bottom: 2px solid #4299e1; padding-bottom: 8px;">
+                                💰 Finansal Raporlar
+                            </h3>
+                            <div style="display: flex; flex-direction: column; gap: 10px;">
+                                <button class="report-btn primary" onclick="generateFinancialReport()">
+                                    <span class="report-icon">📈</span>
+                                    <div class="report-content">
+                                        <div class="report-title">Finansal Özet Raporu</div>
+                                        <div class="report-desc">Toplam satış, tahsilat ve bakiye analizi</div>
+                                    </div>
                                 </button>
-                                <button class="btn btn-secondary" onclick="generateCustomerReport()">
-                                    👥 Müşteri Analiz Raporu
+                                <button class="report-btn secondary" onclick="generateCustomerReport()">
+                                    <span class="report-icon">👥</span>
+                                    <div class="report-content">
+                                        <div class="report-title">Müşteri Analiz Raporu</div>
+                                        <div class="report-desc">Müşteri bazlı borç ve ödeme analizi</div>
+                                    </div>
                                 </button>
-                                <button class="btn btn-secondary" onclick="generateTransactionReport()">
-                                    📋 İşlem Detay Raporu
+                                <button class="report-btn secondary" onclick="generateTransactionReport()">
+                                    <span class="report-icon">📋</span>
+                                    <div class="report-content">
+                                        <div class="report-title">İşlem Detay Raporu</div>
+                                        <div class="report-desc">Tüm işlemlerin detaylı listesi</div>
+                                    </div>
                                 </button>
                             </div>
                         </div>
                         
-                        <!-- Sağ Kolon -->
-                        <div>
-                            <h3 style="color: #4a5568; margin-bottom: 15px; font-size: 14px;">📊 Analiz Raporları</h3>
-                            <div style="display: flex; flex-direction: column; gap: 8px;">
-                                <button class="btn btn-secondary" onclick="generateDebtReport()">
-                                    💳 Borç Analiz Raporu
+                        <!-- Sağ Kolon - Analiz Raporları -->
+                        <div class="report-category">
+                            <h3 style="color: #2d3748; margin-bottom: 15px; font-size: 16px; font-weight: 600; border-bottom: 2px solid #38a169; padding-bottom: 8px;">
+                                📊 Analiz Raporları
+                            </h3>
+                            <div style="display: flex; flex-direction: column; gap: 10px;">
+                                <button class="report-btn secondary" onclick="generateDebtReport()">
+                                    <span class="report-icon">💳</span>
+                                    <div class="report-content">
+                                        <div class="report-title">Borç Analiz Raporu</div>
+                                        <div class="report-desc">Müşteri borçları ve risk analizi</div>
+                                    </div>
                                 </button>
-                                <button class="btn btn-secondary" onclick="generateMonthlyReport()">
-                                    📅 Aylık Performans Raporu
+                                <button class="report-btn secondary" onclick="generateMonthlyReport()">
+                                    <span class="report-icon">📅</span>
+                                    <div class="report-content">
+                                        <div class="report-title">Aylık Performans Raporu</div>
+                                        <div class="report-desc">Aylık satış ve tahsilat performansı</div>
+                                    </div>
                                 </button>
-                                <button class="btn btn-secondary" onclick="generateProductReport()">
-                                    📦 Ürün Satış Raporu
+                                <button class="report-btn secondary" onclick="generateProductReport()">
+                                    <span class="report-icon">📦</span>
+                                    <div class="report-content">
+                                        <div class="report-title">Ürün Satış Raporu</div>
+                                        <div class="report-desc">Ürün bazlı satış analizi</div>
+                                    </div>
                                 </button>
                             </div>
                         </div>
                     </div>
                     
-                    <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
-                        <h3 style="color: #4a5568; margin-bottom: 15px; font-size: 14px;">⚡ Hızlı İşlemler</h3>
-                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                            <button class="btn btn-secondary" onclick="exportToExcel()">
-                                📊 Excel'e Aktar
+                    <!-- Hızlı İşlemler -->
+                    <div style="margin-top: 30px; padding-top: 25px; border-top: 2px solid #e2e8f0;">
+                        <h3 style="color: #2d3748; margin-bottom: 15px; font-size: 16px; font-weight: 600; border-bottom: 2px solid #ed8936; padding-bottom: 8px;">
+                            ⚡ Hızlı İşlemler
+                        </h3>
+                        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                            <button class="quick-btn excel" onclick="exportAllToExcel()">
+                                <span>📊</span> Excel'e Aktar
                             </button>
-                            <button class="btn btn-secondary" onclick="printAllReports()">
-                                🖨️ Tüm Raporları Yazdır
+                            <button class="quick-btn pdf" onclick="exportAllToPDF()">
+                                <span>📄</span> PDF'e Aktar
                             </button>
-                            <button class="btn btn-secondary" onclick="showReportsModal()">
-                                🔄 Raporları Yenile
+                            <button class="quick-btn print" onclick="printAllReports()">
+                                <span>🖨️</span> Yazdır
+                            </button>
+                            <button class="quick-btn refresh" onclick="refreshReports()">
+                                <span>🔄</span> Yenile
                             </button>
                         </div>
                     </div>
+                    
+                    <!-- Rapor Ayarları -->
+                    <div style="margin-top: 30px; padding-top: 25px; border-top: 2px solid #e2e8f0;">
+                        <h3 style="color: #2d3748; margin-bottom: 15px; font-size: 16px; font-weight: 600; border-bottom: 2px solid #9f7aea; padding-bottom: 8px;">
+                            ⚙️ Rapor Ayarları
+                        </h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #4a5568;">Tarih Aralığı:</label>
+                                <div style="display: flex; gap: 10px;">
+                                    <input type="date" id="report-start-date" style="flex: 1; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px;">
+                                    <span style="align-self: center; color: #718096;">→</span>
+                                    <input type="date" id="report-end-date" style="flex: 1; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px;">
                 </div>
+            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #4a5568;">Rapor Formatı:</label>
+                                <select id="report-format" style="width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px;">
+                                    <option value="excel">Excel (.xlsx)</option>
+                                    <option value="pdf">PDF (.pdf)</option>
+                                    <option value="csv">CSV (.csv)</option>
+                                </select>
+        </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <style>
+        .report-btn {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: left;
+            width: 100%;
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .report-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .report-btn.primary {
+            background: linear-gradient(135deg, #4299e1, #3182ce);
+            color: white;
+        }
+        
+        .report-btn.secondary {
+            background: linear-gradient(135deg, #f7fafc, #edf2f7);
+            color: #2d3748;
+        }
+        
+        .report-btn.secondary:hover {
+            background: linear-gradient(135deg, #edf2f7, #e2e8f0);
+        }
+        
+        .report-icon {
+            font-size: 24px;
+            min-width: 30px;
+        }
+        
+        .report-content {
+            flex: 1;
+        }
+        
+        .report-title {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+        
+        .report-desc {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        
+        .quick-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .quick-btn.excel {
+            background: linear-gradient(135deg, #38a169, #2f855a);
+            color: white;
+        }
+        
+        .quick-btn.pdf {
+            background: linear-gradient(135deg, #e53e3e, #c53030);
+            color: white;
+        }
+        
+        .quick-btn.print {
+            background: linear-gradient(135deg, #ed8936, #dd6b20);
+            color: white;
+        }
+        
+        .quick-btn.refresh {
+            background: linear-gradient(135deg, #9f7aea, #805ad5);
+            color: white;
+        }
+        
+        .quick-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        </style>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Tarih aralığını varsayılan olarak son 30 gün yap
+    const today = new Date();
+    const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+    
+    document.getElementById('report-start-date').value = thirtyDaysAgo.toISOString().split('T')[0];
+    document.getElementById('report-end-date').value = today.toISOString().split('T')[0];
+}
+
+// Ürün Yönetimi Modal - Profesyonel Versiyon
+async function showProductManagement() {
+    try {
+        // Mevcut ürünleri getir
+        const products = await ipcRenderer.invoke('get-products');
+        
+    const modalHtml = `
+            <div id="product-management-modal" class="modal active" onclick="if(event.target.id === 'product-management-modal') closeModal('product-management-modal')">
+                <div class="modal-content" style="max-width: 1200px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                        <h2>📋 Ürün Yönetimi</h2>
+                        <button class="close-btn" onclick="closeModal('product-management-modal')">&times;</button>
+                </div>
+                    
+                <div style="padding: 20px;">
+                        <!-- Üst Butonlar -->
+                        <div style="display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap;">
+                            <button onclick="showAddProductModal()" 
+                                    style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                                ➕ Yeni Ürün Ekle
+                            </button>
+                            <button onclick="showQuickAddProduct()" 
+                                    style="padding: 12px 24px; background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                                ⚡ Hızlı Ekle
+                            </button>
+                            <button onclick="exportProductsToExcel()" 
+                                    style="padding: 12px 24px; background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                                📊 Excel'e Aktar
+                            </button>
+                            <button onclick="printProducts()" 
+                                    style="padding: 12px 24px; background: linear-gradient(135deg, #9f7aea 0%, #805ad5 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                                🖨️ Yazdır
+                            </button>
+                        </div>
+                        
+                        <!-- Arama ve Filtreler -->
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 15px; align-items: end;">
+                        <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">🔍 Ürün Ara</label>
+                                    <input type="text" id="product-search" placeholder="Ürün adı, kodu veya barkod..." 
+                                           style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;"
+                                           onkeyup="filterProducts()">
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">📦 Kategori</label>
+                                    <select id="category-filter" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" onchange="filterProducts()">
+                                        <option value="">Tüm Kategoriler</option>
+                                        <option value="Elektronik">Elektronik</option>
+                                        <option value="Giyim">Giyim</option>
+                                        <option value="Gıda">Gıda</option>
+                                        <option value="Ev & Yaşam">Ev & Yaşam</option>
+                                        <option value="Spor">Spor</option>
+                                        <option value="Kitap">Kitap</option>
+                                        <option value="Diğer">Diğer</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">📊 Durum</label>
+                                    <select id="status-filter" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" onchange="filterProducts()">
+                                        <option value="">Tüm Durumlar</option>
+                                        <option value="active">Aktif</option>
+                                        <option value="inactive">Pasif</option>
+                                        <option value="low-stock">Düşük Stok</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <button onclick="clearProductFilters()" 
+                                            style="padding: 10px 20px; background: #6b7280; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                                        🗑️ Temizle
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Ürünler Tablosu -->
+                        <div style="background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                            <div style="overflow-x: auto;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <thead style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                                        <tr>
+                                            <th style="padding: 15px; text-align: left; font-weight: 600; font-size: 14px;">📦 Ürün Bilgileri</th>
+                                            <th style="padding: 15px; text-align: left; font-weight: 600; font-size: 14px;">🏷️ Kod & Barkod</th>
+                                            <th style="padding: 15px; text-align: center; font-weight: 600; font-size: 14px;">📊 Stok</th>
+                                            <th style="padding: 15px; text-align: right; font-weight: 600; font-size: 14px;">💰 Fiyatlar</th>
+                                            <th style="padding: 15px; text-align: center; font-weight: 600; font-size: 14px;">📈 KDV</th>
+                                            <th style="padding: 15px; text-align: center; font-weight: 600; font-size: 14px;">📂 Kategori</th>
+                                            <th style="padding: 15px; text-align: center; font-weight: 600; font-size: 14px;">⚡ Durum</th>
+                                            <th style="padding: 15px; text-align: center; font-weight: 600; font-size: 14px;">🔧 İşlemler</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="products-table-body">
+                                        ${products.map(product => `
+                                            <tr style="border-bottom: 1px solid #e5e7eb;" data-product-id="${product.id}">
+                                                <td style="padding: 15px;">
+                                                    <div style="font-weight: 600; color: #374151; margin-bottom: 5px;">${product.name}</div>
+                                                    <div style="font-size: 12px; color: #6b7280;">${product.description || 'Açıklama yok'}</div>
+                                                </td>
+                                                <td style="padding: 15px;">
+                                                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 3px;">Kod: ${product.code || '-'}</div>
+                                                    <div style="font-size: 12px; color: #6b7280;">Barkod: ${product.barcode || '-'}</div>
+                                                </td>
+                                                <td style="padding: 15px; text-align: center;">
+                                                    <div style="font-weight: 600; color: ${product.stock <= product.min_stock ? '#e53e3e' : '#38a169'};">
+                                                        ${product.stock} ${product.unit}
+                                                    </div>
+                                                    ${product.stock <= product.min_stock ? '<div style="font-size: 11px; color: #e53e3e;">⚠️ Düşük Stok</div>' : ''}
+                                                </td>
+                                                <td style="padding: 15px; text-align: right;">
+                                                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 3px;">Alış: ₺${formatMoney(product.purchase_price)}</div>
+                                                    <div style="font-weight: 600; color: #38a169;">Satış: ₺${formatMoney(product.sale_price)}</div>
+                                                </td>
+                                                <td style="padding: 15px; text-align: center;">
+                                                    <span style="background: #e0e7ff; color: #3730a3; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">
+                                                        %${product.vat_rate}
+                                                    </span>
+                                                </td>
+                                                <td style="padding: 15px; text-align: center;">
+                                                    <span style="background: #f3f4f6; color: #374151; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+                                                        ${product.category || 'Genel'}
+                                                    </span>
+                                                </td>
+                                                <td style="padding: 15px; text-align: center;">
+                                                    <span style="background: ${product.is_active ? '#d1fae5' : '#fee2e2'}; color: ${product.is_active ? '#065f46' : '#991b1b'}; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">
+                                                        ${product.is_active ? '✅ Aktif' : '❌ Pasif'}
+                                                    </span>
+                                                </td>
+                                                <td style="padding: 15px; text-align: center;">
+                                                    <div style="display: flex; gap: 5px; justify-content: center;">
+                                                        <button onclick="editProduct(${product.id})" 
+                                                                style="padding: 6px 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">
+                                                            ✏️
+                                                        </button>
+                                                        <button onclick="deleteProduct(${product.id})" 
+                                                                style="padding: 6px 12px; background: #ef4444; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">
+                                                            🗑️
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- Özet Bilgiler -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px;">
+                            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; text-align: center;">
+                                <div style="font-size: 24px; font-weight: 700; margin-bottom: 5px;">${products.length}</div>
+                                <div style="font-size: 14px; opacity: 0.9;">Toplam Ürün</div>
+                            </div>
+                            <div style="background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; padding: 20px; border-radius: 10px; text-align: center;">
+                                <div style="font-size: 24px; font-weight: 700; margin-bottom: 5px;">${products.filter(p => p.is_active).length}</div>
+                                <div style="font-size: 14px; opacity: 0.9;">Aktif Ürün</div>
+                            </div>
+                            <div style="background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); color: white; padding: 20px; border-radius: 10px; text-align: center;">
+                                <div style="font-size: 24px; font-weight: 700; margin-bottom: 5px;">${products.filter(p => p.stock <= p.min_stock).length}</div>
+                                <div style="font-size: 14px; opacity: 0.9;">Düşük Stok</div>
+                            </div>
+                            <div style="background: linear-gradient(135deg, #9f7aea 0%, #805ad5 100%); color: white; padding: 20px; border-radius: 10px; text-align: center;">
+                                <div style="font-size: 24px; font-weight: 700; margin-bottom: 5px;">${new Set(products.map(p => p.category).filter(c => c)).size}</div>
+                                <div style="font-size: 14px; opacity: 0.9;">Kategori</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+    } catch (error) {
+        console.error('Product management modal error:', error);
+        showNotification('Ürünler yüklenirken hata oluştu', 'error');
+    }
+}
+
+// Ürün filtreleme
+function filterProducts() {
+    const searchTerm = document.getElementById('product-search').value.toLowerCase();
+    const categoryFilter = document.getElementById('category-filter').value;
+    const statusFilter = document.getElementById('status-filter').value;
+    
+    const rows = document.querySelectorAll('#products-table-body tr');
+    
+    rows.forEach(row => {
+        const productName = row.querySelector('td:first-child div:first-child').textContent.toLowerCase();
+        const productCode = row.querySelector('td:nth-child(2) div:first-child').textContent.toLowerCase();
+        const productBarcode = row.querySelector('td:nth-child(2) div:last-child').textContent.toLowerCase();
+        const productCategory = row.querySelector('td:nth-child(6) span').textContent.toLowerCase();
+        const productStatus = row.querySelector('td:nth-child(7) span').textContent.toLowerCase();
+        const stockText = row.querySelector('td:nth-child(3) div:first-child').textContent;
+        const stock = parseFloat(stockText);
+        const minStockText = row.querySelector('td:nth-child(3) div:last-child');
+        const isLowStock = minStockText && minStockText.textContent.includes('Düşük Stok');
+        
+        let showRow = true;
+        
+        // Arama filtresi
+        if (searchTerm && !productName.includes(searchTerm) && !productCode.includes(searchTerm) && !productBarcode.includes(searchTerm)) {
+            showRow = false;
+        }
+        
+        // Kategori filtresi
+        if (categoryFilter && !productCategory.includes(categoryFilter.toLowerCase())) {
+            showRow = false;
+        }
+        
+        // Durum filtresi
+        if (statusFilter) {
+            if (statusFilter === 'active' && !productStatus.includes('aktif')) {
+                showRow = false;
+            } else if (statusFilter === 'inactive' && !productStatus.includes('pasif')) {
+                showRow = false;
+            } else if (statusFilter === 'low-stock' && !isLowStock) {
+                showRow = false;
+            }
+        }
+        
+        row.style.display = showRow ? '' : 'none';
+    });
+}
+
+// Filtreleri temizle
+function clearProductFilters() {
+    document.getElementById('product-search').value = '';
+    document.getElementById('category-filter').value = '';
+    document.getElementById('status-filter').value = '';
+    filterProducts();
+}
+
+// Ürün düzenleme modal'ı
+async function editProduct(productId) {
+    try {
+        const products = await ipcRenderer.invoke('get-products');
+        const product = products.find(p => p.id === productId);
+        
+        if (!product) {
+            showNotification('Ürün bulunamadı', 'error');
+            return;
+        }
+        
+        const modalHtml = `
+            <div id="edit-product-modal" class="modal active" onclick="if(event.target.id === 'edit-product-modal') closeModal('edit-product-modal')">
+                <div class="modal-content" style="max-width: 800px;" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h2>✏️ Ürün Düzenle</h2>
+                        <button class="close-btn" onclick="closeModal('edit-product-modal')">&times;</button>
+                    </div>
+                    
+                    <div style="padding: 20px;">
+                        <form id="edit-product-form" onsubmit="handleEditProduct(event, ${productId})">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                        <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Ürün Adı *</label>
+                                    <input type="text" id="edit-product-name" name="name" value="${product.name}" 
+                                           style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" required>
+                                </div>
+                                
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Ürün Kodu</label>
+                                    <input type="text" id="edit-product-code" name="code" value="${product.code || ''}" 
+                                           style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                </div>
+                                
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Barkod</label>
+                                    <input type="text" id="edit-product-barcode" name="barcode" value="${product.barcode || ''}" 
+                                           style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                </div>
+                                
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Birim</label>
+                                    <select id="edit-product-unit" name="unit" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                        <option value="adet" ${product.unit === 'adet' ? 'selected' : ''}>Adet</option>
+                                        <option value="kg" ${product.unit === 'kg' ? 'selected' : ''}>Kilogram</option>
+                                        <option value="lt" ${product.unit === 'lt' ? 'selected' : ''}>Litre</option>
+                                        <option value="m" ${product.unit === 'm' ? 'selected' : ''}>Metre</option>
+                                        <option value="m²" ${product.unit === 'm²' ? 'selected' : ''}>Metrekare</option>
+                                        <option value="paket" ${product.unit === 'paket' ? 'selected' : ''}>Paket</option>
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Alış Fiyatı (₺)</label>
+                                    <input type="number" id="edit-product-purchase-price" name="purchase_price" value="${product.purchase_price}" 
+                                           step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                            </div>
+                                
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Satış Fiyatı (₺) *</label>
+                                    <input type="number" id="edit-product-sale-price" name="sale_price" value="${product.sale_price}" 
+                                           step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" required>
+                        </div>
+                                
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">KDV Oranı (%)</label>
+                                    <input type="number" id="edit-product-vat" name="vat_rate" value="${product.vat_rate}" 
+                                           step="0.1" min="0" max="100" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                    </div>
+                    
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Stok Miktarı</label>
+                                    <input type="number" id="edit-product-stock" name="stock" value="${product.stock}" 
+                                           step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                </div>
+                                
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Minimum Stok</label>
+                                    <input type="number" id="edit-product-min-stock" name="min_stock" value="${product.min_stock}" 
+                                           step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                </div>
+                                
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Kategori</label>
+                                    <input type="text" id="edit-product-category" name="category" value="${product.category || ''}" 
+                                           style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                </div>
+                            </div>
+                            
+                            <div style="margin-bottom: 20px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Açıklama</label>
+                                <textarea id="edit-product-description" name="description" rows="3" 
+                                          style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; resize: vertical;">${product.description || ''}</textarea>
+                            </div>
+                            
+                            <div style="margin-bottom: 20px;">
+                                <label style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="checkbox" id="edit-product-active" name="is_active" ${product.is_active ? 'checked' : ''}>
+                                    <span style="font-weight: 600; color: #374151;">Aktif Ürün</span>
+                                </label>
+                            </div>
+                            
+                            <div style="display: flex; gap: 15px; justify-content: flex-end;">
+                                <button type="button" onclick="closeModal('edit-product-modal')" 
+                                        style="padding: 12px 24px; background: #6b7280; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                                    ❌ İptal
+                            </button>
+                                <button type="submit" 
+                                        style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                                    💾 Güncelle
+                            </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+    } catch (error) {
+        console.error('Edit product modal error:', error);
+        showNotification('Ürün düzenleme modal\'ı açılırken hata oluştu', 'error');
+    }
+}
+
+// Ürün düzenleme işlemi
+async function handleEditProduct(event, productId) {
+    event.preventDefault();
+    
+    try {
+        const formData = new FormData(event.target);
+        const productData = {
+            name: formData.get('name'),
+            code: formData.get('code'),
+            barcode: formData.get('barcode'),
+            unit: formData.get('unit'),
+            purchase_price: parseFloat(formData.get('purchase_price')) || 0,
+            sale_price: parseFloat(formData.get('sale_price')),
+            vat_rate: parseFloat(formData.get('vat_rate')) || 0,
+            stock: parseFloat(formData.get('stock')) || 0,
+            min_stock: parseFloat(formData.get('min_stock')) || 0,
+            category: formData.get('category'),
+            description: formData.get('description'),
+            is_active: formData.get('is_active') ? 1 : 0
+        };
+        
+        await ipcRenderer.invoke('update-product', productId, productData);
+        
+        showNotification('✅ Ürün başarıyla güncellendi', 'success');
+        closeModal('edit-product-modal');
+        
+        // Ürün yönetimi modal'ını yenile
+        closeModal('product-management-modal');
+        setTimeout(() => showProductManagement(), 100);
+        
+    } catch (error) {
+        console.error('Update product error:', error);
+        showNotification('Ürün güncellenirken hata oluştu', 'error');
+    }
+}
+
+// Ürün silme
+async function deleteProduct(productId) {
+    if (!confirm('Bu ürünü silmek istediğinizden emin misiniz?')) {
+        return;
+    }
+    
+    try {
+        await ipcRenderer.invoke('delete-product', productId);
+        showNotification('✅ Ürün başarıyla silindi', 'success');
+        
+        // Ürün yönetimi modal'ını yenile
+        closeModal('product-management-modal');
+        setTimeout(() => showProductManagement(), 100);
+        
+    } catch (error) {
+        console.error('Delete product error:', error);
+        showNotification('Ürün silinirken hata oluştu', 'error');
+    }
+}
+
+// Ürün ekleme modal'ı
+function showAddProductModal() {
+    const modalHtml = `
+        <div id="add-product-modal" class="modal active" onclick="if(event.target.id === 'add-product-modal') closeModal('add-product-modal')">
+            <div class="modal-content" style="max-width: 800px;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>➕ Yeni Ürün Ekle</h2>
+                    <button class="close-btn" onclick="closeModal('add-product-modal')">&times;</button>
+                </div>
+                
+                <div style="padding: 20px;">
+                    <form id="add-product-form" onsubmit="handleAddProduct(event)">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Ürün Adı *</label>
+                                <input type="text" id="product-name" name="name" 
+                                       style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" required>
+                            </div>
+                            
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Ürün Kodu</label>
+                                <input type="text" id="product-code" name="code" 
+                                       style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                            </div>
+                            
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Barkod</label>
+                                <input type="text" id="product-barcode" name="barcode" 
+                                       style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                            </div>
+                            
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Birim</label>
+                                <select id="product-unit" name="unit" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                    <option value="adet">Adet</option>
+                                    <option value="kg">Kilogram</option>
+                                    <option value="lt">Litre</option>
+                                    <option value="m">Metre</option>
+                                    <option value="m²">Metrekare</option>
+                                    <option value="paket">Paket</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Alış Fiyatı (₺)</label>
+                                <input type="number" id="product-purchase-price" name="purchase_price" 
+                                       step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                            </div>
+                            
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Satış Fiyatı (₺) *</label>
+                                <input type="number" id="product-sale-price" name="sale_price" 
+                                       step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" required>
+                            </div>
+                            
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">KDV Oranı (%)</label>
+                                <input type="number" id="product-vat" name="vat_rate" value="20" 
+                                       step="0.1" min="0" max="100" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                            </div>
+                            
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Stok Miktarı</label>
+                                <input type="number" id="product-stock" name="stock" 
+                                       step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                            </div>
+                            
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Minimum Stok</label>
+                                <input type="number" id="product-min-stock" name="min_stock" 
+                                       step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                            </div>
+                            
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Kategori</label>
+                                <input type="text" id="product-category" name="category" 
+                                       style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Açıklama</label>
+                            <textarea id="product-description" name="description" rows="3" 
+                                      style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; resize: vertical;"></textarea>
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="product-active" name="is_active" checked>
+                                <span style="font-weight: 600; color: #374151;">Aktif Ürün</span>
+                            </label>
+                        </div>
+                        
+                        <div style="display: flex; gap: 15px; justify-content: flex-end;">
+                            <button type="button" onclick="closeModal('add-product-modal')" 
+                                    style="padding: 12px 24px; background: #6b7280; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                                ❌ İptal
+                            </button>
+                            <button type="submit" 
+                                    style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                                💾 Kaydet
+                            </button>
+                        </div>
+                    </form>
+                    </div>
             </div>
         </div>
     `;
@@ -3005,130 +4174,1316 @@ function showReportsModal() {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-// Ayarlar Modal
-function showSettingsModal() {
+// Ürünleri Excel'e aktar
+async function exportProductsToExcel() {
+    try {
+        const products = await ipcRenderer.invoke('get-products');
+        
+        let csvContent = 'Ürün Adı,Kod,Barkod,Birim,Alış Fiyatı,Satış Fiyatı,KDV Oranı,Stok,Min Stok,Kategori,Açıklama,Durum\n';
+        
+        products.forEach(product => {
+            csvContent += `"${product.name}","${product.code || ''}","${product.barcode || ''}","${product.unit}","${product.purchase_price}","${product.sale_price}","${product.vat_rate}","${product.stock}","${product.min_stock}","${product.category || ''}","${product.description || ''}","${product.is_active ? 'Aktif' : 'Pasif'}"\n`;
+        });
+        
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `urunler_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showNotification('✅ Ürünler Excel dosyasına aktarıldı', 'success');
+        
+    } catch (error) {
+        console.error('Export products error:', error);
+        showNotification('Ürünler aktarılırken hata oluştu', 'error');
+    }
+}
+
+// Ürünleri yazdır
+function printProducts() {
+    const printWindow = window.open('', '_blank');
+    const products = Array.from(document.querySelectorAll('#products-table-body tr')).map(row => {
+        const cells = row.querySelectorAll('td');
+        return {
+            name: cells[0].querySelector('div:first-child').textContent,
+            code: cells[1].querySelector('div:first-child').textContent.replace('Kod: ', ''),
+            barcode: cells[1].querySelector('div:last-child').textContent.replace('Barkod: ', ''),
+            stock: cells[2].querySelector('div:first-child').textContent,
+            purchasePrice: cells[3].querySelector('div:first-child').textContent.replace('Alış: ', ''),
+            salePrice: cells[3].querySelector('div:last-child').textContent.replace('Satış: ', ''),
+            vatRate: cells[4].querySelector('span').textContent,
+            category: cells[5].querySelector('span').textContent,
+            status: cells[6].querySelector('span').textContent
+        };
+    });
+    
+    printWindow.document.write(`
+        <html>
+            <head>
+                <title>Ürün Listesi</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; }
+                    h1 { color: #374151; text-align: center; margin-bottom: 30px; }
+                    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                    th, td { border: 1px solid #e5e7eb; padding: 12px; text-align: left; }
+                    th { background: #f3f4f6; font-weight: 600; }
+                    .summary { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 20px; }
+                </style>
+            </head>
+            <body>
+                <h1>📋 Ürün Listesi</h1>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ürün Adı</th>
+                            <th>Kod</th>
+                            <th>Barkod</th>
+                            <th>Stok</th>
+                            <th>Alış Fiyatı</th>
+                            <th>Satış Fiyatı</th>
+                            <th>KDV</th>
+                            <th>Kategori</th>
+                            <th>Durum</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${products.map(product => `
+                            <tr>
+                                <td>${product.name}</td>
+                                <td>${product.code}</td>
+                                <td>${product.barcode}</td>
+                                <td>${product.stock}</td>
+                                <td>${product.purchasePrice}</td>
+                                <td>${product.salePrice}</td>
+                                <td>${product.vatRate}</td>
+                                <td>${product.category}</td>
+                                <td>${product.status}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                <div class="summary">
+                    <h3>📊 Özet Bilgiler</h3>
+                    <p><strong>Toplam Ürün:</strong> ${products.length}</p>
+                    <p><strong>Aktif Ürün:</strong> ${products.filter(p => p.status.includes('Aktif')).length}</p>
+                    <p><strong>Pasif Ürün:</strong> ${products.filter(p => p.status.includes('Pasif')).length}</p>
+                </div>
+            </body>
+        </html>
+    `);
+    
+    printWindow.document.close();
+    printWindow.print();
+}
+
+// Ayarlar Modal - Profesyonel Versiyon
+async function showSettingsModal() {
+    try {
+        // Mevcut firma ayarlarını getir
+        const companySettings = await ipcRenderer.invoke('get-company-settings');
+        
     const modalHtml = `
-        <div id="settings-modal" class="modal active">
-            <div class="modal-content" style="max-width: 600px;">
+            <div id="settings-modal" class="modal active" onclick="if(event.target.id === 'settings-modal') closeModal('settings-modal')">
+                <div class="modal-content" style="max-width: 1000px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
                 <div class="modal-header">
-                    <h2>⚙️ Uygulama Ayarları</h2>
+                        <h2>⚙️ Firma Ayarları</h2>
                     <button class="close-btn" onclick="closeModal('settings-modal')">&times;</button>
                 </div>
+                    
                 <div style="padding: 20px;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <!-- Firma Bilgileri -->
+                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 30px;">
+                            <h3 style="margin: 0 0 10px 0; font-size: 18px;">🏢 Firma Bilgileri</h3>
+                            <p style="margin: 0; font-size: 14px; opacity: 0.9;">Bu bilgiler tüm raporlarda ve faturalarda görünecektir</p>
+                        </div>
+                        
+                        <form id="company-settings-form" onsubmit="saveCompanySettings(event)">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
                         <!-- Sol Kolon -->
                         <div>
-                            <h3 style="color: #4a5568; margin-bottom: 15px; font-size: 14px;">🔧 Genel Ayarlar</h3>
-                            <div style="display: flex; flex-direction: column; gap: 15px;">
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4a5568;">Para Birimi:</label>
-                                    <select style="width: 100%; padding: 8px; border: 1px solid #a0aec0; border-radius: 4px;">
-                                        <option value="TL">Türk Lirası (₺)</option>
-                                        <option value="USD">Amerikan Doları ($)</option>
-                                        <option value="EUR">Euro (€)</option>
-                                    </select>
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Firma Adı *</label>
+                                        <input type="text" id="company_name" name="company_name" value="${companySettings.company_name || ''}" 
+                                               style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" required>
                                 </div>
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4a5568;">Tarih Formatı:</label>
-                                    <select style="width: 100%; padding: 8px; border: 1px solid #a0aec0; border-radius: 4px;">
-                                        <option value="DD.MM.YYYY">GG.AA.YYYY</option>
-                                        <option value="MM/DD/YYYY">AA/GG/YYYY</option>
-                                        <option value="YYYY-MM-DD">YYYY-AA-GG</option>
-                                    </select>
+                                    
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Firma Kodu</label>
+                                        <input type="text" id="company_code" name="company_code" value="${companySettings.company_code || ''}" 
+                                               style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
                                 </div>
+                                    
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Vergi Numarası</label>
+                                        <input type="text" id="tax_number" name="tax_number" value="${companySettings.tax_number || ''}" 
+                                               style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                    </div>
+                                    
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Vergi Dairesi</label>
+                                        <input type="text" id="tax_office" name="tax_office" value="${companySettings.tax_office || ''}" 
+                                               style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                    </div>
+                                    
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Adres</label>
+                                        <textarea id="address" name="address" rows="3" 
+                                                  style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; resize: vertical;">${companySettings.address || ''}</textarea>
                             </div>
                         </div>
                         
                         <!-- Sağ Kolon -->
                         <div>
-                            <h3 style="color: #4a5568; margin-bottom: 15px; font-size: 14px;">📊 Varsayılan Değerler</h3>
-                            <div style="display: flex; flex-direction: column; gap: 15px;">
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4a5568;">Varsayılan Kredi Limiti:</label>
-                                    <input type="number" value="500" style="width: 100%; padding: 8px; border: 1px solid #a0aec0; border-radius: 4px;">
-                                </div>
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4a5568;">Varsayılan KDV Oranı:</label>
-                                    <select style="width: 100%; padding: 8px; border: 1px solid #a0aec0; border-radius: 4px;">
-                                        <option value="0">%0</option>
-                                        <option value="1">%1</option>
-                                        <option value="10">%10</option>
-                                        <option value="20" selected>%20</option>
-                                    </select>
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Telefon</label>
+                                        <input type="tel" id="phone" name="phone" value="${companySettings.phone || ''}" 
+                                               style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                    </div>
+                                    
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">E-posta</label>
+                                        <input type="email" id="email" name="email" value="${companySettings.email || ''}" 
+                                               style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                    </div>
+                                    
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Web Sitesi</label>
+                                        <input type="url" id="website" name="website" value="${companySettings.website || ''}" 
+                                               style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                    </div>
+                                    
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Logo Yolu</label>
+                                        <input type="text" id="logo_path" name="logo_path" value="${companySettings.logo_path || ''}" 
+                                               style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" 
+                                               placeholder="C:\\path\\to\\logo.png">
+                                    </div>
                                 </div>
                             </div>
+                            
+                            <!-- Fatura Ayarları -->
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                                <h4 style="margin: 0 0 15px 0; color: #374151; font-size: 16px;">📄 Fatura Ayarları</h4>
+                                
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                                <div>
+                                        <div style="margin-bottom: 15px;">
+                                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Fatura Başlığı</label>
+                                            <textarea id="invoice_header" name="invoice_header" rows="2" 
+                                                      style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; resize: vertical;">${companySettings.invoice_header || ''}</textarea>
+                                </div>
+                                        
+                                        <div style="margin-bottom: 15px;">
+                                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Fatura Alt Bilgisi</label>
+                                            <textarea id="invoice_footer" name="invoice_footer" rows="2" 
+                                                      style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; resize: vertical;">${companySettings.invoice_footer || ''}</textarea>
+                                        </div>
+                                    </div>
+                                    
+                                <div>
+                                        <div style="margin-bottom: 15px;">
+                                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Para Birimi</label>
+                                            <select id="default_currency" name="default_currency" 
+                                                    style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                                <option value="TRY" ${companySettings.default_currency === 'TRY' ? 'selected' : ''}>TRY - Türk Lirası</option>
+                                                <option value="USD" ${companySettings.default_currency === 'USD' ? 'selected' : ''}>USD - Amerikan Doları</option>
+                                                <option value="EUR" ${companySettings.default_currency === 'EUR' ? 'selected' : ''}>EUR - Euro</option>
+                                    </select>
+                                </div>
+                                        
+                                        <div style="margin-bottom: 15px;">
+                                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Varsayılan KDV Oranı (%)</label>
+                                            <input type="number" id="default_vat_rate" name="default_vat_rate" value="${companySettings.default_vat_rate || 20}" 
+                                                   min="0" max="100" step="0.1"
+                                                   style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                            </div>
+                                        
+                                        <div style="margin-bottom: 15px;">
+                                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Fatura Öneki</label>
+                                            <input type="text" id="invoice_prefix" name="invoice_prefix" value="${companySettings.invoice_prefix || 'FAT'}" 
+                                                   style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                    </div>
+                    
+                                        <div style="margin-bottom: 15px;">
+                                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Son Fatura Numarası</label>
+                                            <input type="number" id="invoice_number" name="invoice_number" value="${companySettings.invoice_number || 1}" 
+                                                   min="1"
+                                                   style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                                        </div>
+                                    </div>
                         </div>
                     </div>
                     
-                    <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
-                        <h3 style="color: #4a5568; margin-bottom: 15px; font-size: 14px;">💾 Veri Yönetimi</h3>
-                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                            <button class="btn btn-secondary" onclick="backupData()">
-                                💾 Yedek Al
-                            </button>
-                            <button class="btn btn-secondary" onclick="restoreData()">
-                                📁 Yedekten Geri Yükle
-                            </button>
-                            <button class="btn btn-secondary" onclick="clearData()">
-                                🗑️ Verileri Temizle
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
-                        <button class="btn btn-secondary" onclick="closeModal('settings-modal')">
-                            İptal
+                            <!-- Butonlar -->
+                            <div style="display: flex; gap: 15px; justify-content: flex-end; margin-top: 30px;">
+                                <button type="button" onclick="closeModal('settings-modal')" 
+                                        style="padding: 12px 24px; background: #6b7280; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                                    ❌ İptal
                         </button>
-                        <button class="btn btn-primary" onclick="saveSettings()">
-                            💾 Ayarları Kaydet
+                                <button type="submit" 
+                                        style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                                    💾 Kaydet
                         </button>
                     </div>
+                        </form>
                 </div>
             </div>
         </div>
     `;
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+    } catch (error) {
+        console.error('Settings modal error:', error);
+        showNotification('Ayarlar yüklenirken hata oluştu', 'error');
+    }
+}
+
+// Firma ayarlarını kaydet
+async function saveCompanySettings(event) {
+    event.preventDefault();
+    
+    try {
+        const formData = new FormData(event.target);
+        const settingsData = {
+            company_name: formData.get('company_name'),
+            company_code: formData.get('company_code'),
+            tax_number: formData.get('tax_number'),
+            tax_office: formData.get('tax_office'),
+            address: formData.get('address'),
+            phone: formData.get('phone'),
+            email: formData.get('email'),
+            website: formData.get('website'),
+            logo_path: formData.get('logo_path'),
+            invoice_header: formData.get('invoice_header'),
+            invoice_footer: formData.get('invoice_footer'),
+            default_currency: formData.get('default_currency'),
+            default_vat_rate: parseFloat(formData.get('default_vat_rate')),
+            invoice_prefix: formData.get('invoice_prefix'),
+            invoice_number: parseInt(formData.get('invoice_number'))
+        };
+        
+        const result = await ipcRenderer.invoke('update-company-settings', settingsData);
+        
+        if (result.success) {
+            showNotification('✅ Firma ayarları başarıyla kaydedildi', 'success');
+            closeModal('settings-modal');
+        } else {
+            showNotification('❌ Ayarlar kaydedilirken hata oluştu', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Save company settings error:', error);
+        showNotification('Ayarlar kaydedilirken hata oluştu', 'error');
+    }
 }
 
 // Rapor fonksiyonları
-function generateFinancialReport() {
-    showNotification('💰 Finansal özet raporu hazırlanıyor...', 'info');
+// Finansal Özet Raporu
+// Finansal Özet Raporu
+async function generateFinancialReport() {
+    try {
+        showNotification('💰 Genel finansal özet raporu hazırlanıyor...', 'info');
     closeModal('reports-modal');
-    setTimeout(() => showBalanceTotal(), 500);
+        
+        // Tüm müşterileri getir
+        const customers = await ipcRenderer.invoke('get-customers');
+        if (!customers || customers.length === 0) {
+            showNotification('Müşteri bulunamadı', 'warning');
+            return;
+        }
+        
+        // Tüm işlemleri topla
+        let totalSales = 0;
+        let totalPayments = 0;
+        let totalCustomers = customers.length;
+        let totalTransactions = 0;
+        
+        for (const customer of customers) {
+            const sales = await ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            
+            const customerSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
+            const customerPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
+            
+            totalSales += customerSales;
+            totalPayments += customerPayments;
+            totalTransactions += sales.length + purchases.length;
+        }
+        
+        const netBalance = totalSales - totalPayments;
+        const paymentRate = totalSales > 0 ? ((totalPayments / totalSales) * 100) : 0;
+        
+        // Genel finansal rapor modal'ını göster
+        showGeneralFinancialModal({
+            totalSales,
+            totalPayments,
+            netBalance,
+            paymentRate,
+            totalCustomers,
+            totalTransactions
+        });
+        
+    } catch (error) {
+        console.error('Finansal rapor hatası:', error);
+        showNotification('Finansal rapor oluşturulurken hata oluştu', 'error');
+    }
 }
 
-function generateCustomerReport() {
-    showNotification('👥 Müşteri analiz raporu yakında eklenecek', 'info');
+// Genel Finansal Rapor Modal'ı
+function showGeneralFinancialModal(data) {
+    const currentDate = new Date();
+    const currentTime = currentDate.toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'});
+    const currentDateStr = currentDate.toLocaleDateString('tr-TR');
+    
+    const modalHtml = `
+        <div id="general-financial-modal" class="modal active" onclick="if(event.target.id === 'general-financial-modal') closeModal('general-financial-modal')">
+            <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>💰 Genel Finansal Özet Raporu</h2>
+                    <button onclick="closeModal('general-financial-modal')" class="close-btn">&times;</button>
+                </div>
+                
+                <div class="modal-body">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                        <h3 style="margin: 0 0 10px 0; font-size: 18px;">📊 Genel Durum</h3>
+                        <p style="margin: 0; font-size: 14px;">Rapor Tarihi: ${currentDateStr} ${currentTime}</p>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #28a745;">
+                            <h4 style="margin: 0 0 5px 0; color: #28a745; font-size: 16px;">💰 Toplam Satış</h4>
+                            <p style="margin: 0; font-size: 20px; font-weight: bold; color: #28a745;">${formatMoney(data.totalSales)}</p>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #dc3545;">
+                            <h4 style="margin: 0 0 5px 0; color: #dc3545; font-size: 16px;">💳 Toplam Tahsilat</h4>
+                            <p style="margin: 0; font-size: 20px; font-weight: bold; color: #dc3545;">${formatMoney(data.totalPayments)}</p>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #007bff;">
+                            <h4 style="margin: 0 0 5px 0; color: #007bff; font-size: 16px;">⚖️ Net Bakiye</h4>
+                            <p style="margin: 0; font-size: 20px; font-weight: bold; color: ${data.netBalance >= 0 ? '#28a745' : '#dc3545'};">${formatMoney(data.netBalance)}</p>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107;">
+                            <h4 style="margin: 0 0 5px 0; color: #ffc107; font-size: 16px;">📈 Tahsilat Oranı</h4>
+                            <p style="margin: 0; font-size: 20px; font-weight: bold; color: #ffc107;">%${data.paymentRate.toFixed(1)}</p>
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                        <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center;">
+                            <h4 style="margin: 0 0 5px 0; color: #1976d2; font-size: 16px;">👥 Toplam Müşteri</h4>
+                            <p style="margin: 0; font-size: 24px; font-weight: bold; color: #1976d2;">${data.totalCustomers}</p>
+                        </div>
+                        
+                        <div style="background: #f3e5f5; padding: 15px; border-radius: 8px; text-align: center;">
+                            <h4 style="margin: 0 0 5px 0; color: #7b1fa2; font-size: 16px;">📋 Toplam İşlem</h4>
+                            <p style="margin: 0; font-size: 24px; font-weight: bold; color: #7b1fa2;">${data.totalTransactions}</p>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                        <h4 style="margin: 0 0 10px 0; color: #495057;">📊 Analiz</h4>
+                        <p style="margin: 0; font-size: 14px; color: #6c757d;">
+                            ${data.netBalance >= 0 ? 
+                                `Toplam ${data.totalCustomers} müşteriden ${formatMoney(data.netBalance)} tutarında alacak bulunmaktadır. Tahsilat oranı %${data.paymentRate.toFixed(1)} seviyesindedir.` :
+                                `Toplam ${data.totalCustomers} müşteriden ${formatMoney(Math.abs(data.netBalance))} tutarında borç bulunmaktadır. Tahsilat oranı %${data.paymentRate.toFixed(1)} seviyesindedir.`
+                            }
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button onclick="exportGeneralFinancialToExcel()" class="btn btn-success">📊 Excel'e Aktar</button>
+                    <button onclick="exportGeneralFinancialToPDF()" class="btn btn-danger">📄 PDF'e Aktar</button>
+                    <button onclick="printGeneralFinancialReport()" class="btn btn-primary">🖨️ Yazdır</button>
+                    <button onclick="closeModal('general-financial-modal')" class="btn btn-secondary">❌ Kapat</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-function generateTransactionReport() {
-    showNotification('📋 İşlem detay raporu yakında eklenecek', 'info');
+// Genel Finansal Rapor Export Fonksiyonları
+async function exportGeneralFinancialToExcel() {
+    try {
+        const currentDate = new Date();
+        const currentTime = currentDate.toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'});
+        const currentDateStr = currentDate.toLocaleDateString('tr-TR');
+        
+        // Tüm müşterileri getir
+        const customers = await ipcRenderer.invoke('get-customers');
+        
+        // Tüm işlemleri topla
+        let totalSales = 0;
+        let totalPayments = 0;
+        let totalCustomers = customers.length;
+        let totalTransactions = 0;
+        
+        for (const customer of customers) {
+            const sales = await ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            
+            const customerSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
+            const customerPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
+            
+            totalSales += customerSales;
+            totalPayments += customerPayments;
+            totalTransactions += sales.length + purchases.length;
+        }
+        
+        const netBalance = totalSales - totalPayments;
+        const paymentRate = totalSales > 0 ? ((totalPayments / totalSales) * 100) : 0;
+        
+        // CSV formatında veri oluştur
+        let csvContent = '\uFEFF'; // UTF-8 BOM
+        csvContent += 'ETIC AJANS - GENEL FINANSAL OZET RAPORU\n';
+        csvContent += `Rapor Tarihi: ${currentDateStr} ${currentTime}\n\n`;
+        
+        csvContent += 'GENEL FINANSAL OZET:\n';
+        csvContent += `Toplam Satis,${formatMoney(totalSales)}\n`;
+        csvContent += `Toplam Tahsilat,${formatMoney(totalPayments)}\n`;
+        csvContent += `Net Bakiye,${formatMoney(netBalance)}\n`;
+        csvContent += `Tahsilat Orani,%${paymentRate.toFixed(1)}\n`;
+        csvContent += `Toplam Musteri,${totalCustomers}\n`;
+        csvContent += `Toplam Islem,${totalTransactions}\n\n`;
+        
+        csvContent += 'MUSTERI DETAYLARI:\n';
+        csvContent += 'Musteri Adi,Toplam Satis,Toplam Tahsilat,Net Bakiye,Tahsilat Orani,Islem Sayisi\n';
+        
+        for (const customer of customers) {
+            const sales = await ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            
+            const customerSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
+            const customerPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
+            const customerNetBalance = customerSales - customerPayments;
+            const customerPaymentRate = customerSales > 0 ? ((customerPayments / customerSales) * 100) : 0;
+            const customerTransactionCount = sales.length + purchases.length;
+            
+            csvContent += `"${fixTurkishCharsForPDF(customer.name)}",${formatMoney(customerSales)},${formatMoney(customerPayments)},${formatMoney(customerNetBalance)},%${customerPaymentRate.toFixed(1)},${customerTransactionCount}\n`;
+        }
+        
+        csvContent += '\nBu rapor Etic Ajans Veresiye Takip Sistemi tarafindan otomatik olarak olusturulmustur.';
+        
+        // Dosyayı indir
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `Genel_Finansal_Ozet_${currentDateStr.replace(/\./g, '_')}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showNotification('📊 Genel finansal rapor Excel\'e aktarıldı', 'success');
+        
+    } catch (error) {
+        console.error('Excel export hatası:', error);
+        showNotification('Excel export sırasında hata oluştu', 'error');
+    }
 }
 
-function generateDebtReport() {
-    showNotification('💳 Borç analiz raporu yakında eklenecek', 'info');
+async function exportGeneralFinancialToPDF() {
+    try {
+        const currentDate = new Date();
+        const currentTime = currentDate.toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'});
+        const currentDateStr = currentDate.toLocaleDateString('tr-TR');
+        
+        // Tüm müşterileri getir
+        const customers = await ipcRenderer.invoke('get-customers');
+        
+        // Tüm işlemleri topla
+        let totalSales = 0;
+        let totalPayments = 0;
+        let totalCustomers = customers.length;
+        let totalTransactions = 0;
+        
+        for (const customer of customers) {
+            const sales = await ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            
+            const customerSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
+            const customerPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
+            
+            totalSales += customerSales;
+            totalPayments += customerPayments;
+            totalTransactions += sales.length + purchases.length;
+        }
+        
+        const netBalance = totalSales - totalPayments;
+        const paymentRate = totalSales > 0 ? ((totalPayments / totalSales) * 100) : 0;
+        
+        // PDF oluştur
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        // Sayfa boyutları
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        let yPosition = 20;
+        
+        // Profesyonel başlık tasarımı
+        doc.setFillColor(74, 85, 104);
+        doc.rect(0, 0, pageWidth, 30, 'F');
+        
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(20);
+        doc.text('ETIC AJANS', 20, 15);
+        doc.setFontSize(16);
+        doc.text('GENEL FINANSAL OZET RAPORU', 20, 25);
+        
+        yPosition = 45;
+        
+        // Rapor bilgileri
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(12);
+        doc.text(`Rapor Tarihi: ${currentDateStr} ${currentTime}`, 20, yPosition);
+        yPosition += 20;
+        
+        // Genel finansal özet
+        doc.setFontSize(16);
+        doc.text('GENEL FINANSAL OZET', 20, yPosition);
+        yPosition += 15;
+        
+        const summaryData = [
+            ['Toplam Satis', formatMoney(totalSales)],
+            ['Toplam Tahsilat', formatMoney(totalPayments)],
+            ['Net Bakiye', formatMoney(netBalance)],
+            ['Tahsilat Orani', `%${paymentRate.toFixed(1)}`],
+            ['Toplam Musteri', totalCustomers.toString()],
+            ['Toplam Islem', totalTransactions.toString()]
+        ];
+        
+        doc.autoTable({
+            startY: yPosition,
+            head: [['Kategori', 'Deger']],
+            body: summaryData,
+            theme: 'striped',
+            headStyles: { 
+                fillColor: [74, 85, 104],
+                textColor: [255, 255, 255],
+                fontSize: 12
+            },
+            bodyStyles: { fontSize: 11 },
+            columnStyles: {
+                0: { cellWidth: 60 },
+                1: { cellWidth: 40, halign: 'right' }
+            }
+        });
+        
+        yPosition = doc.lastAutoTable.finalY + 20;
+        
+        // Müşteri detayları
+        doc.setFontSize(16);
+        doc.text('MUSTERI DETAYLARI', 20, yPosition);
+        yPosition += 15;
+        
+        const customerData = [];
+        for (const customer of customers) {
+            const sales = await ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            
+            const customerSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
+            const customerPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
+            const customerNetBalance = customerSales - customerPayments;
+            const customerPaymentRate = customerSales > 0 ? ((customerPayments / customerSales) * 100) : 0;
+            const customerTransactionCount = sales.length + purchases.length;
+            
+            customerData.push([
+                fixTurkishCharsForPDF(customer.name),
+                formatMoney(customerSales),
+                formatMoney(customerPayments),
+                formatMoney(customerNetBalance),
+                `%${customerPaymentRate.toFixed(1)}`,
+                customerTransactionCount.toString()
+            ]);
+        }
+        
+        doc.autoTable({
+            startY: yPosition,
+            head: [['Musteri Adi', 'Toplam Satis', 'Toplam Tahsilat', 'Net Bakiye', 'Tahsilat Orani', 'Islem Sayisi']],
+            body: customerData,
+            theme: 'striped',
+            headStyles: { 
+                fillColor: [74, 85, 104],
+                textColor: [255, 255, 255],
+                fontSize: 10
+            },
+            bodyStyles: { fontSize: 9 },
+            columnStyles: {
+                0: { cellWidth: 40 },
+                1: { cellWidth: 25, halign: 'right' },
+                2: { cellWidth: 25, halign: 'right' },
+                3: { cellWidth: 25, halign: 'right' },
+                4: { cellWidth: 20, halign: 'right' },
+                5: { cellWidth: 15, halign: 'center' }
+            }
+        });
+        
+        // Alt bilgi
+        yPosition = doc.lastAutoTable.finalY + 20;
+        doc.setFontSize(10);
+        doc.setTextColor(128, 128, 128);
+        doc.text('Bu rapor Etic Ajans Veresiye Takip Sistemi tarafindan otomatik olarak olusturulmustur.', 20, yPosition);
+        
+        // PDF'i indir
+        doc.save(`Genel_Finansal_Ozet_${currentDateStr.replace(/\./g, '_')}.pdf`);
+        
+        showNotification('📄 Genel finansal rapor PDF\'e aktarıldı', 'success');
+        
+    } catch (error) {
+        console.error('PDF export hatası:', error);
+        showNotification('PDF export sırasında hata oluştu', 'error');
+    }
 }
 
-function generateMonthlyReport() {
-    showNotification('📅 Aylık performans raporu yakında eklenecek', 'info');
+function printGeneralFinancialReport() {
+    try {
+        const currentDate = new Date();
+        const currentTime = currentDate.toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'});
+        const currentDateStr = currentDate.toLocaleDateString('tr-TR');
+        
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Genel Finansal Özet Raporu</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .company-name { font-size: 24px; font-weight: bold; color: #4a5568; }
+                    .report-title { font-size: 18px; color: #718096; margin-top: 10px; }
+                    .report-date { font-size: 14px; color: #a0aec0; margin-top: 5px; }
+                    .summary-section { margin-bottom: 30px; }
+                    .summary-title { font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #2d3748; }
+                    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+                    .summary-item { background: #f7fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #4299e1; }
+                    .summary-label { font-size: 14px; color: #4a5568; margin-bottom: 5px; }
+                    .summary-value { font-size: 18px; font-weight: bold; color: #2d3748; }
+                    .customer-section { margin-top: 30px; }
+                    .customer-title { font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #2d3748; }
+                    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                    th, td { padding: 10px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+                    th { background-color: #f7fafc; font-weight: bold; color: #4a5568; }
+                    .footer { margin-top: 30px; text-align: center; font-size: 12px; color: #a0aec0; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="company-name">ETIC AJANS</div>
+                    <div class="report-title">GENEL FINANSAL OZET RAPORU</div>
+                    <div class="report-date">Rapor Tarihi: ${currentDateStr} ${currentTime}</div>
+                </div>
+                
+                <div class="summary-section">
+                    <div class="summary-title">GENEL FINANSAL OZET</div>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <div class="summary-label">Toplam Satis</div>
+                            <div class="summary-value">${formatMoney(0)}</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">Toplam Tahsilat</div>
+                            <div class="summary-value">${formatMoney(0)}</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">Net Bakiye</div>
+                            <div class="summary-value">${formatMoney(0)}</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">Tahsilat Orani</div>
+                            <div class="summary-value">%0.0</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="footer">
+                    Bu rapor Etic Ajans Veresiye Takip Sistemi tarafindan otomatik olarak olusturulmustur.
+                </div>
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
+        printWindow.print();
+        
+        showNotification('🖨️ Genel finansal rapor yazdırıldı', 'success');
+        
+    } catch (error) {
+        console.error('Print hatası:', error);
+        showNotification('Yazdırma sırasında hata oluştu', 'error');
+    }
 }
 
-function generateProductReport() {
-    showNotification('📦 Ürün satış raporu yakında eklenecek', 'info');
+// Müşteri Analiz Raporu
+async function generateCustomerReport() {
+    try {
+        showNotification('👥 Müşteri analiz raporu hazırlanıyor...', 'info');
+        
+        // Tüm müşterileri getir
+        const customers = await ipcRenderer.invoke('get-customers');
+        if (!customers || customers.length === 0) {
+            showNotification('Müşteri bulunamadı', 'warning');
+            return;
+        }
+        
+        // Her müşteri için işlemleri getir ve analiz et
+        const customerAnalysis = [];
+        
+        for (const customer of customers) {
+            const sales = await ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            
+            const totalSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
+            const totalPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
+            const netBalance = totalSales - totalPayments;
+            const paymentRate = totalSales > 0 ? ((totalPayments / totalSales) * 100) : 0;
+            
+            customerAnalysis.push({
+                name: fixTurkishCharsForPDF(customer.name),
+                totalSales: totalSales,
+                totalPayments: totalPayments,
+                netBalance: netBalance,
+                paymentRate: paymentRate,
+                transactionCount: sales.length + purchases.length,
+                lastTransaction: sales.length > 0 || purchases.length > 0 ? 
+                    Math.max(
+                        ...sales.map(s => new Date(s.created_at).getTime()),
+                        ...purchases.map(p => new Date(p.created_at).getTime())
+                    ) : null
+            });
+        }
+        
+        // Net bakiyeye göre sırala (en yüksek borç en üstte)
+        customerAnalysis.sort((a, b) => b.netBalance - a.netBalance);
+        
+        // Rapor modal'ını göster
+        showCustomerAnalysisModal(customerAnalysis);
+        
+    } catch (error) {
+        console.error('Müşteri analiz raporu hatası:', error);
+        showNotification('Müşteri analiz raporu oluşturulurken hata oluştu', 'error');
+    }
 }
 
-function exportToExcel() {
-    showNotification('📊 Excel aktarımı yakında eklenecek', 'info');
+// İşlem Detay Raporu
+async function generateTransactionReport() {
+    try {
+        showNotification('📋 İşlem detay raporu hazırlanıyor...', 'info');
+        
+        // Tüm müşterileri getir
+        const customers = await ipcRenderer.invoke('get-customers');
+        if (!customers || customers.length === 0) {
+            showNotification('Müşteri bulunamadı', 'warning');
+            return;
+        }
+        
+        // Tüm işlemleri topla
+        const allTransactions = [];
+        
+        for (const customer of customers) {
+            const sales = await ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            
+            // Satışları ekle
+            sales.forEach(sale => {
+                allTransactions.push({
+                    ...sale,
+                    customerName: fixTurkishCharsForPDF(customer.name),
+                    transactionType: 'sale',
+                    type: '💰 Satış'
+                });
+            });
+            
+            // Tahsilatları ekle
+            purchases.forEach(purchase => {
+                allTransactions.push({
+                    ...purchase,
+                    customerName: fixTurkishCharsForPDF(customer.name),
+                    transactionType: 'purchase',
+                    type: '💳 Tahsilat'
+                });
+            });
+        }
+        
+        // Tarihe göre sırala (en yeni en üstte)
+        allTransactions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        
+        // Rapor modal'ını göster
+        showTransactionReportModal(allTransactions);
+        
+    } catch (error) {
+        console.error('İşlem detay raporu hatası:', error);
+        showNotification('İşlem detay raporu oluşturulurken hata oluştu', 'error');
+    }
+}
+
+// Borç Analiz Raporu
+async function generateDebtReport() {
+    try {
+        showNotification('💳 Borç analiz raporu hazırlanıyor...', 'info');
+        
+        // Tüm müşterileri getir
+        const customers = await ipcRenderer.invoke('get-customers');
+        if (!customers || customers.length === 0) {
+            showNotification('Müşteri bulunamadı', 'warning');
+            return;
+        }
+        
+        // Her müşteri için borç analizi yap
+        const debtAnalysis = [];
+        
+        for (const customer of customers) {
+            const sales = await ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            
+            const totalSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
+            const totalPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
+            const netBalance = totalSales - totalPayments;
+            
+            if (netBalance > 0) { // Sadece borcu olan müşteriler
+                const lastPaymentDate = purchases.length > 0 ? 
+                    Math.max(...purchases.map(p => new Date(p.created_at).getTime())) : null;
+                
+                const daysSinceLastPayment = lastPaymentDate ? 
+                    Math.floor((new Date().getTime() - lastPaymentDate) / (1000 * 60 * 60 * 24)) : null;
+                
+                // Risk seviyesi hesapla
+                let riskLevel = 'Düşük';
+                if (netBalance > 50000) riskLevel = 'Yüksek';
+                else if (netBalance > 20000) riskLevel = 'Orta';
+                
+                if (daysSinceLastPayment > 90) riskLevel = 'Yüksek';
+                else if (daysSinceLastPayment > 30) riskLevel = 'Orta';
+                
+                debtAnalysis.push({
+                    name: fixTurkishCharsForPDF(customer.name),
+                    netBalance: netBalance,
+                    riskLevel: riskLevel,
+                    daysSinceLastPayment: daysSinceLastPayment,
+                    totalSales: totalSales,
+                    totalPayments: totalPayments,
+                    paymentRate: totalSales > 0 ? ((totalPayments / totalSales) * 100) : 0
+                });
+            }
+        }
+        
+        // Borç miktarına göre sırala (en yüksek borç en üstte)
+        debtAnalysis.sort((a, b) => b.netBalance - a.netBalance);
+        
+        // Rapor modal'ını göster
+        showDebtAnalysisModal(debtAnalysis);
+        
+    } catch (error) {
+        console.error('Borç analiz raporu hatası:', error);
+        showNotification('Borç analiz raporu oluşturulurken hata oluştu', 'error');
+    }
+}
+
+// Aylık Performans Raporu
+async function generateMonthlyReport() {
+    try {
+        showNotification('📅 Aylık performans raporu hazırlanıyor...', 'info');
+        
+        // Son 12 ayın verilerini getir
+        const monthlyData = [];
+        const today = new Date();
+        
+        for (let i = 11; i >= 0; i--) {
+            const monthDate = new Date(today.getFullYear(), today.getMonth() - i, 1);
+            const nextMonthDate = new Date(today.getFullYear(), today.getMonth() - i + 1, 1);
+            
+            const monthName = monthDate.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
+            
+            // Bu ay için tüm müşterilerin işlemlerini getir
+            const customers = await ipcRenderer.invoke('get-customers');
+            let monthSales = 0;
+            let monthPayments = 0;
+            let transactionCount = 0;
+            
+            for (const customer of customers) {
+                const sales = await ipcRenderer.invoke('get-sales', customer.id);
+                const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+                
+                // Bu ay içindeki işlemleri filtrele
+                const monthSalesData = sales.filter(s => {
+                    const saleDate = new Date(s.created_at);
+                    return saleDate >= monthDate && saleDate < nextMonthDate;
+                });
+                
+                const monthPurchasesData = purchases.filter(p => {
+                    const purchaseDate = new Date(p.created_at);
+                    return purchaseDate >= monthDate && purchaseDate < nextMonthDate;
+                });
+                
+                monthSales += monthSalesData.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
+                monthPayments += monthPurchasesData.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
+                transactionCount += monthSalesData.length + monthPurchasesData.length;
+            }
+            
+            monthlyData.push({
+                month: monthName,
+                sales: monthSales,
+                payments: monthPayments,
+                netBalance: monthSales - monthPayments,
+                transactionCount: transactionCount,
+                paymentRate: monthSales > 0 ? ((monthPayments / monthSales) * 100) : 0
+            });
+        }
+        
+        // Rapor modal'ını göster
+        showMonthlyReportModal(monthlyData);
+        
+    } catch (error) {
+        console.error('Aylık performans raporu hatası:', error);
+        showNotification('Aylık performans raporu oluşturulurken hata oluştu', 'error');
+    }
+}
+
+// Ürün Satış Raporu
+async function generateProductReport() {
+    try {
+        showNotification('📦 Ürün satış raporu hazırlanıyor...', 'info');
+        
+        // Tüm müşterileri getir
+        const customers = await ipcRenderer.invoke('get-customers');
+        if (!customers || customers.length === 0) {
+            showNotification('Müşteri bulunamadı', 'warning');
+            return;
+        }
+        
+        // Tüm satışları topla ve ürün bazında analiz et
+        const productAnalysis = new Map();
+        
+        for (const customer of customers) {
+            const sales = await ipcRenderer.invoke('get-sales', customer.id);
+            
+            sales.forEach(sale => {
+                const productName = sale.product_name || sale.description || 'Belirtilmemiş';
+                const amount = sale.total_amount || sale.amount || 0;
+                const quantity = sale.quantity || 1;
+                
+                if (productAnalysis.has(productName)) {
+                    const existing = productAnalysis.get(productName);
+                    existing.totalAmount += amount;
+                    existing.totalQuantity += quantity;
+                    existing.saleCount += 1;
+                    existing.customers.add(customer.name);
+                } else {
+                    productAnalysis.set(productName, {
+                        productName: productName,
+                        totalAmount: amount,
+                        totalQuantity: quantity,
+                        saleCount: 1,
+                        customers: new Set([customer.name])
+                    });
+                }
+            });
+        }
+        
+        // Map'i array'e çevir ve sırala
+        const productData = Array.from(productAnalysis.values()).map(item => ({
+            ...item,
+            customerCount: item.customers.size,
+            averageAmount: item.totalAmount / item.saleCount,
+            averageQuantity: item.totalQuantity / item.saleCount
+        }));
+        
+        // Toplam tutara göre sırala (en yüksek en üstte)
+        productData.sort((a, b) => b.totalAmount - a.totalAmount);
+        
+        // Rapor modal'ını göster
+        showProductReportModal(productData);
+        
+    } catch (error) {
+        console.error('Ürün satış raporu hatası:', error);
+        showNotification('Ürün satış raporu oluşturulurken hata oluştu', 'error');
+    }
+}
+
+// Hızlı İşlemler Fonksiyonları
+function exportAllToExcel() {
+    if (!currentCustomer) {
+        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        return;
+    }
+    exportBalanceToExcel();
+}
+
+function exportAllToPDF() {
+    if (!currentCustomer) {
+        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        return;
+    }
+    exportBalanceToPDF();
 }
 
 function printAllReports() {
-    showNotification('🖨️ Tüm raporların yazdırılması yakında eklenecek', 'info');
+    if (!currentCustomer) {
+        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        return;
+    }
+    printBalanceReport();
 }
 
-// Ayarlar fonksiyonları
-function backupData() {
-    showNotification('💾 Veri yedekleme yakında eklenecek', 'info');
+function refreshReports() {
+    showNotification('🔄 Raporlar yenileniyor...', 'info');
+    closeModal('reports-modal');
+    setTimeout(() => showReportsModal(), 500);
+}
+
+// Rapor Modal'ları
+function showCustomerAnalysisModal(customerAnalysis) {
+    const modalHtml = `
+        <div id="customer-analysis-modal" class="modal active" onclick="if(event.target.id === 'customer-analysis-modal') closeModal('customer-analysis-modal')">
+            <div class="modal-content" style="max-width: 1000px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>👥 Müşteri Analiz Raporu</h2>
+                    <button class="close-btn" onclick="closeModal('customer-analysis-modal')">&times;</button>
+                </div>
+                <div style="padding: 20px;">
+                    <div style="margin-bottom: 20px;">
+                        <button class="btn btn-primary" onclick="exportCustomerAnalysisToExcel()">📊 Excel'e Aktar</button>
+                        <button class="btn btn-secondary" onclick="printCustomerAnalysis()">🖨️ Yazdır</button>
+                    </div>
+                    
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <thead>
+                                <tr style="background: #f7fafc; border-bottom: 2px solid #e2e8f0;">
+                                    <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">Müşteri</th>
+                                    <th style="padding: 12px; text-align: right; border: 1px solid #e2e8f0;">Toplam Satış</th>
+                                    <th style="padding: 12px; text-align: right; border: 1px solid #e2e8f0;">Toplam Tahsilat</th>
+                                    <th style="padding: 12px; text-align: right; border: 1px solid #e2e8f0;">Net Bakiye</th>
+                                    <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">Tahsilat Oranı</th>
+                                    <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">İşlem Sayısı</th>
+                                    <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">Son İşlem</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${customerAnalysis.map(customer => `
+                                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: 500;">${customer.name}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: right; color: #e53e3e;">${formatMoney(customer.totalSales)}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: right; color: #38a169;">${formatMoney(customer.totalPayments)}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: right; color: ${customer.netBalance > 0 ? '#e53e3e' : customer.netBalance < 0 ? '#38a169' : '#718096'}; font-weight: 600;">${formatMoney(customer.netBalance)}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${customer.paymentRate.toFixed(1)}%</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${customer.transactionCount}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${customer.lastTransaction ? new Date(customer.lastTransaction).toLocaleDateString('tr-TR') : '-'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function showTransactionReportModal(allTransactions) {
+    const modalHtml = `
+        <div id="transaction-report-modal" class="modal active" onclick="if(event.target.id === 'transaction-report-modal') closeModal('transaction-report-modal')">
+            <div class="modal-content" style="max-width: 1200px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>📋 İşlem Detay Raporu</h2>
+                    <button class="close-btn" onclick="closeModal('transaction-report-modal')">&times;</button>
+                </div>
+                <div style="padding: 20px;">
+                    <div style="margin-bottom: 20px;">
+                        <button class="btn btn-primary" onclick="exportTransactionReportToExcel()">📊 Excel'e Aktar</button>
+                        <button class="btn btn-secondary" onclick="printTransactionReport()">🖨️ Yazdır</button>
+                    </div>
+                    
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                            <thead>
+                                <tr style="background: #f7fafc; border-bottom: 2px solid #e2e8f0;">
+                                    <th style="padding: 10px; text-align: left; border: 1px solid #e2e8f0;">Tarih</th>
+                                    <th style="padding: 10px; text-align: left; border: 1px solid #e2e8f0;">Müşteri</th>
+                                    <th style="padding: 10px; text-align: left; border: 1px solid #e2e8f0;">Tür</th>
+                                    <th style="padding: 10px; text-align: left; border: 1px solid #e2e8f0;">Açıklama</th>
+                                    <th style="padding: 10px; text-align: right; border: 1px solid #e2e8f0;">Tutar</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${allTransactions.map(transaction => `
+                                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                                        <td style="padding: 10px; border: 1px solid #e2e8f0;">${new Date(transaction.created_at).toLocaleDateString('tr-TR')}</td>
+                                        <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: 500;">${transaction.customerName}</td>
+                                        <td style="padding: 10px; border: 1px solid #e2e8f0;">${transaction.type}</td>
+                                        <td style="padding: 10px; border: 1px solid #e2e8f0;">${transaction.description || transaction.product_name || '-'}</td>
+                                        <td style="padding: 10px; border: 1px solid #e2e8f0; text-align: right; color: ${transaction.transactionType === 'sale' ? '#e53e3e' : '#38a169'}; font-weight: 600;">${transaction.transactionType === 'sale' ? '+' : '-'}${formatMoney(transaction.total_amount || transaction.amount || 0)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function showDebtAnalysisModal(debtAnalysis) {
+    const modalHtml = `
+        <div id="debt-analysis-modal" class="modal active" onclick="if(event.target.id === 'debt-analysis-modal') closeModal('debt-analysis-modal')">
+            <div class="modal-content" style="max-width: 1000px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>💳 Borç Analiz Raporu</h2>
+                    <button class="close-btn" onclick="closeModal('debt-analysis-modal')">&times;</button>
+                </div>
+                <div style="padding: 20px;">
+                    <div style="margin-bottom: 20px;">
+                        <button class="btn btn-primary" onclick="exportDebtAnalysisToExcel()">📊 Excel'e Aktar</button>
+                        <button class="btn btn-secondary" onclick="printDebtAnalysis()">🖨️ Yazdır</button>
+                    </div>
+                    
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <thead>
+                                <tr style="background: #f7fafc; border-bottom: 2px solid #e2e8f0;">
+                                    <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">Müşteri</th>
+                                    <th style="padding: 12px; text-align: right; border: 1px solid #e2e8f0;">Borç Miktarı</th>
+                                    <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">Risk Seviyesi</th>
+                                    <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">Son Ödeme</th>
+                                    <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">Tahsilat Oranı</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${debtAnalysis.map(customer => `
+                                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: 500;">${customer.name}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: right; color: #e53e3e; font-weight: 600;">${formatMoney(customer.netBalance)}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">
+                                            <span style="padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; color: white; background: ${customer.riskLevel === 'Yüksek' ? '#e53e3e' : customer.riskLevel === 'Orta' ? '#ed8936' : '#38a169'};">
+                                                ${customer.riskLevel}
+                                            </span>
+                                        </td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${customer.daysSinceLastPayment ? customer.daysSinceLastPayment + ' gün önce' : 'Hiç ödeme yok'}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${customer.paymentRate.toFixed(1)}%</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function showMonthlyReportModal(monthlyData) {
+    const modalHtml = `
+        <div id="monthly-report-modal" class="modal active" onclick="if(event.target.id === 'monthly-report-modal') closeModal('monthly-report-modal')">
+            <div class="modal-content" style="max-width: 1000px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>📅 Aylık Performans Raporu</h2>
+                    <button class="close-btn" onclick="closeModal('monthly-report-modal')">&times;</button>
+                </div>
+                <div style="padding: 20px;">
+                    <div style="margin-bottom: 20px;">
+                        <button class="btn btn-primary" onclick="exportMonthlyReportToExcel()">📊 Excel'e Aktar</button>
+                        <button class="btn btn-secondary" onclick="printMonthlyReport()">🖨️ Yazdır</button>
+                    </div>
+                    
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <thead>
+                                <tr style="background: #f7fafc; border-bottom: 2px solid #e2e8f0;">
+                                    <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">Ay</th>
+                                    <th style="padding: 12px; text-align: right; border: 1px solid #e2e8f0;">Satış</th>
+                                    <th style="padding: 12px; text-align: right; border: 1px solid #e2e8f0;">Tahsilat</th>
+                                    <th style="padding: 12px; text-align: right; border: 1px solid #e2e8f0;">Net Bakiye</th>
+                                    <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">Tahsilat Oranı</th>
+                                    <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">İşlem Sayısı</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${monthlyData.map(month => `
+                                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: 500;">${month.month}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: right; color: #e53e3e;">${formatMoney(month.sales)}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: right; color: #38a169;">${formatMoney(month.payments)}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: right; color: ${month.netBalance > 0 ? '#e53e3e' : month.netBalance < 0 ? '#38a169' : '#718096'}; font-weight: 600;">${formatMoney(month.netBalance)}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${month.paymentRate.toFixed(1)}%</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${month.transactionCount}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function showProductReportModal(productData) {
+    const modalHtml = `
+        <div id="product-report-modal" class="modal active" onclick="if(event.target.id === 'product-report-modal') closeModal('product-report-modal')">
+            <div class="modal-content" style="max-width: 1000px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>📦 Ürün Satış Raporu</h2>
+                    <button class="close-btn" onclick="closeModal('product-report-modal')">&times;</button>
+                </div>
+                <div style="padding: 20px;">
+                    <div style="margin-bottom: 20px;">
+                        <button class="btn btn-primary" onclick="exportProductReportToExcel()">📊 Excel'e Aktar</button>
+                        <button class="btn btn-secondary" onclick="printProductReport()">🖨️ Yazdır</button>
+                    </div>
+                    
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <thead>
+                                <tr style="background: #f7fafc; border-bottom: 2px solid #e2e8f0;">
+                                    <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">Ürün</th>
+                                    <th style="padding: 12px; text-align: right; border: 1px solid #e2e8f0;">Toplam Tutar</th>
+                                    <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">Toplam Miktar</th>
+                                    <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">Satış Sayısı</th>
+                                    <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">Müşteri Sayısı</th>
+                                    <th style="padding: 12px; text-align: right; border: 1px solid #e2e8f0;">Ortalama Tutar</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${productData.map(product => `
+                                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: 500;">${product.productName}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: right; color: #e53e3e; font-weight: 600;">${formatMoney(product.totalAmount)}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${product.totalQuantity}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${product.saleCount}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${product.customerCount}</td>
+                                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: right;">${formatMoney(product.averageAmount)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
 function restoreData() {

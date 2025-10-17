@@ -30,9 +30,34 @@
         <div class="top-controls">
             <div class="date-filters">
                 <label>📅 Tarih Aralığı:</label>
-                <input type="date" id="start-date" value="2023-05-01">
-                <span>→</span>
-                <input type="date" id="end-date" value="2023-05-31">
+                <div class="quick-filters">
+                    <button class="quick-filter-btn" onclick="setQuickFilter('today')">Bugün</button>
+                    <button class="quick-filter-btn" onclick="setQuickFilter('yesterday')">Dün</button>
+                    <button class="quick-filter-btn" onclick="setQuickFilter('last7days')">Son 7 Gün</button>
+                    <button class="quick-filter-btn" onclick="setQuickFilter('last30days')">Son 30 Gün</button>
+                    <button class="quick-filter-btn" onclick="setQuickFilter('thisMonth')">Bu Ay</button>
+                    <button class="quick-filter-btn" onclick="setQuickFilter('lastMonth')">Geçen Ay</button>
+                    <button class="quick-filter-btn" onclick="setQuickFilter('all')">Tümü</button>
+                </div>
+                <div class="custom-date-range">
+                    <input type="date" id="start-date" value="2023-05-01">
+                    <span>→</span>
+                    <input type="date" id="end-date" value="2023-05-31">
+                </div>
+            </div>
+            <div class="filter-totals" id="filter-totals" style="display: none;">
+                <div class="total-item">
+                    <span class="total-label">💰 Toplam Satış:</span>
+                    <span class="total-value" id="filtered-sales-total">0,00 ₺</span>
+                </div>
+                <div class="total-item">
+                    <span class="total-label">💳 Toplam Tahsilat:</span>
+                    <span class="total-value" id="filtered-payments-total">0,00 ₺</span>
+                </div>
+                <div class="total-item">
+                    <span class="total-label">⚖️ Net Bakiye:</span>
+                    <span class="total-value" id="filtered-net-total">0,00 ₺</span>
+                </div>
             </div>
             <div class="action-buttons">
                 <button class="action-btn primary" onclick="queryTransactions()">🔍 İşlem Sorgula</button>
@@ -166,11 +191,11 @@
                     <!-- Sales-Payment Section -->
                     <div class="transaction-section">
                         <div class="section-header">
-                            <h3>💰 SATIŞ-ÖDEME (+)</h3>
+                            <h3>📊 TÜM İŞLEMLER</h3>
                             <div class="section-buttons">
-                                <button class="section-btn" onclick="addSale()">Ekle</button>
-                                <button class="section-btn" onclick="editSale()">Değiştir</button>
-                                <button class="section-btn" onclick="deleteSale()">Sil</button>
+                                <button class="section-btn" onclick="addTransaction()">Ekle</button>
+                                <button class="section-btn" onclick="editTransaction()">Değiştir</button>
+                                <button class="section-btn" onclick="deleteTransaction()">Sil</button>
                             </div>
                         </div>
                         
@@ -183,53 +208,20 @@
                                         <th>Gün</th>
                                         <th>Ay</th>
                                         <th>Yıl</th>
+                                        <th>Tür</th>
                                         <th>Açıklama</th>
                                         <th>Miktar</th>
                                         <th>Tutar</th>
+                                        <th>Bakiye</th>
                                     </tr>
                                 </thead>
                                 <tbody id="sales-table-body">
                                     <tr>
-                                        <td colspan="6" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td>
+                                        <td colspan="8" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
-                    </div>
-
-                    <!-- Purchase-Collection Section -->
-                    <div class="transaction-section">
-                <div class="section-header">
-                            <h3>💳 ALIŞ-TAHSİLAT (-)</h3>
-                            <div class="section-buttons">
-                                <button class="section-btn" onclick="addPurchase()">Ekle</button>
-                                <button class="section-btn" onclick="editPurchase()">Değiştir</button>
-                                <button class="section-btn" onclick="deletePurchase()">Sil</button>
-                            </div>
-                        </div>
-                        
-                        <input type="text" class="search-input" placeholder="Arama için tıklayınız..">
-                        
-                        <div class="transaction-table">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Gün</th>
-                                        <th>Ay</th>
-                                        <th>Yıl</th>
-                                        <th>Açıklama</th>
-                                        <th>Miktar</th>
-                                        <th>Tutar</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="purchases-table-body">
-                                    <tr>
-                                        <td colspan="6" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
                 </div>
             </div>
 

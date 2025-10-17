@@ -130,6 +130,27 @@ function initDatabase() {
                 FOREIGN KEY (customer_id) REFERENCES customers (id),
                 FOREIGN KEY (product_id) REFERENCES products (id)
             );
+            
+            CREATE TABLE IF NOT EXISTS company_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_name TEXT NOT NULL DEFAULT 'Etic Ajans',
+                company_code TEXT,
+                tax_number TEXT,
+                tax_office TEXT,
+                address TEXT,
+                phone TEXT,
+                email TEXT,
+                website TEXT,
+                logo_path TEXT,
+                invoice_header TEXT,
+                invoice_footer TEXT,
+                default_currency TEXT DEFAULT 'TRY',
+                default_vat_rate REAL DEFAULT 20,
+                invoice_prefix TEXT DEFAULT 'FAT',
+                invoice_number INTEGER DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
         `);
         
         console.log('Database initialized successfully');
@@ -412,14 +433,14 @@ function setupIpcHandlers() {
         try {
             console.log('Updating transaction:', transactionData);
             
-            const { id, customer_id, type, date, amount, description, product_id, quantity, unit_price, total_amount } = transactionData;
+            const { id, customer_id, type, created_at, description, product_id, quantity, unit_price, total_amount } = transactionData;
             
             const result = db.prepare(`
                 UPDATE transactions 
-                SET customer_id = ?, type = ?, date = ?, amount = ?, description = ?, 
+                SET customer_id = ?, type = ?, created_at = ?, description = ?, 
                     product_id = ?, quantity = ?, unit_price = ?, total_amount = ?
                 WHERE id = ?
-            `).run(customer_id, type, date, amount, description, product_id, quantity, unit_price, total_amount, id);
+            `).run(customer_id, type, created_at, description, product_id, quantity, unit_price, total_amount, id);
             
             console.log('Transaction update result:', result);
             return { success: result.changes > 0 };
@@ -592,6 +613,109 @@ function setupIpcHandlers() {
             return { success: true, affectedRows: result.changes };
         } catch (error) {
             console.error('Delete product error:', error);
+            throw error;
+        }
+    });
+    
+    // Get sales for a specific customer
+    ipcMain.handle('get-sales', (event, customerId) => {
+        try {
+            const stmt = db.prepare(`
+                SELECT t.*, c.name as customer_name, p.name as product_name
+                FROM transactions t 
+                LEFT JOIN customers c ON t.customer_id = c.id 
+                LEFT JOIN products p ON t.product_id = p.id
+                WHERE t.customer_id = ? AND t.type = 'debt'
+                ORDER BY t.created_at DESC
+            `);
+            return stmt.all(customerId);
+        } catch (error) {
+            console.error('Get sales error:', error);
+            throw error;
+        }
+    });
+    
+    // Get purchases for a specific customer
+    ipcMain.handle('get-purchases', (event, customerId) => {
+        try {
+            const stmt = db.prepare(`
+                SELECT t.*, c.name as customer_name, p.name as product_name
+                FROM transactions t 
+                LEFT JOIN customers c ON t.customer_id = c.id 
+                LEFT JOIN products p ON t.product_id = p.id
+                WHERE t.customer_id = ? AND t.type = 'payment'
+                ORDER BY t.created_at DESC
+            `);
+            return stmt.all(customerId);
+        } catch (error) {
+            console.error('Get purchases error:', error);
+            throw error;
+        }
+    });
+    
+    // Company Settings IPC Handlers
+    ipcMain.handle('get-company-settings', () => {
+        try {
+            const stmt = db.prepare('SELECT * FROM company_settings ORDER BY id DESC LIMIT 1');
+            const settings = stmt.get();
+            return settings || {
+                company_name: 'Etic Ajans',
+                company_code: '',
+                tax_number: '',
+                tax_office: '',
+                address: '',
+                phone: '',
+                email: '',
+                website: '',
+                logo_path: '',
+                invoice_header: '',
+                invoice_footer: '',
+                default_currency: 'TRY',
+                default_vat_rate: 20,
+                invoice_prefix: 'FAT',
+                invoice_number: 1
+            };
+        } catch (error) {
+            console.error('Get company settings error:', error);
+            throw error;
+        }
+    });
+    
+    ipcMain.handle('update-company-settings', (event, settingsData) => {
+        try {
+            const stmt = db.prepare(`
+                INSERT OR REPLACE INTO company_settings (
+                    id, company_name, company_code, tax_number, tax_office, 
+                    address, phone, email, website, logo_path, invoice_header, 
+                    invoice_footer, default_currency, default_vat_rate, 
+                    invoice_prefix, invoice_number, updated_at
+                ) VALUES (
+                    1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
+                )
+            `);
+            
+            const result = stmt.run(
+                settingsData.company_name,
+                settingsData.company_code,
+                settingsData.tax_number,
+                settingsData.tax_office,
+                settingsData.address,
+                settingsData.phone,
+                settingsData.email,
+                settingsData.website,
+                settingsData.logo_path,
+                settingsData.invoice_header,
+                settingsData.invoice_footer,
+                settingsData.default_currency,
+                settingsData.default_vat_rate,
+                settingsData.invoice_prefix,
+                settingsData.invoice_number
+            );
+            
+            console.log('Company settings updated successfully, affected rows:', result.changes);
+            return { success: true, affectedRows: result.changes };
+        } catch (error) {
+            console.error('Update company settings error:', error);
             throw error;
         }
     });
