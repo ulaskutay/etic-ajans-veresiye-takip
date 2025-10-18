@@ -74,36 +74,216 @@ document.addEventListener('DOMContentLoaded', () => {
 
 });
 
+// Event listener management system
+let eventListeners = {
+    formListeners: [],
+    keyboardListeners: [],
+    inputListeners: [],
+    modalListeners: [],
+    customerSearchListeners: []
+};
+
 // Event listeners
 function setupEventListeners() {
+    // Önce mevcut event listener'ları temizle
+    cleanupEventListeners();
+    
     // Customer search setup
     setupCustomerSearch('sale-customer', 'sale-customer-dropdown');
     setupCustomerSearch('purchase-customer', 'purchase-customer-dropdown');
 
     // Form event listeners
-    document.getElementById('add-customer-form').addEventListener('submit', handleAddCustomer);
-    document.getElementById('edit-customer-form').addEventListener('submit', handleEditCustomer);
-    document.getElementById('add-sale-form').addEventListener('submit', handleAddSale);
-    document.getElementById('add-purchase-form').addEventListener('submit', handleAddPurchase);
-    document.getElementById('add-product-form').addEventListener('submit', handleAddProduct);
-    document.getElementById('quick-add-product-form').addEventListener('submit', handleQuickAddProduct);
-    document.getElementById('edit-sale-form').addEventListener('submit', handleEditSale);
-    document.getElementById('edit-purchase-form').addEventListener('submit', handleEditPurchase);
+    const formElements = [
+        { id: 'add-customer-form', handler: handleAddCustomer },
+        { id: 'edit-customer-form', handler: handleEditCustomer },
+        { id: 'add-sale-form', handler: handleAddSale },
+        { id: 'add-purchase-form', handler: handleAddPurchase },
+        { id: 'add-product-form', handler: handleAddProduct },
+        { id: 'quick-add-product-form', handler: handleQuickAddProduct },
+        { id: 'edit-sale-form', handler: handleEditSale },
+        { id: 'edit-purchase-form', handler: handleEditPurchase }
+    ];
+
+    formElements.forEach(({ id, handler }) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('submit', handler);
+            eventListeners.formListeners.push({ element, event: 'submit', handler });
+        }
+    });
     
     // Date change listeners
-    document.getElementById('start-date').addEventListener('change', filterTransactions);
-    document.getElementById('end-date').addEventListener('change', filterTransactions);
+    const dateElements = [
+        { id: 'start-date', handler: filterTransactions },
+        { id: 'end-date', handler: filterTransactions }
+    ];
+
+    dateElements.forEach(({ id, handler }) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('change', handler);
+            eventListeners.inputListeners.push({ element, event: 'change', handler });
+        }
+    });
     
     // Product selection change - auto-fill price
-    document.getElementById('sale-product').addEventListener('change', handleProductSelection);
-    document.getElementById('edit-sale-product').addEventListener('change', handleEditProductSelection);
+    const productElements = [
+        { id: 'sale-product', handler: handleProductSelection },
+        { id: 'edit-sale-product', handler: handleEditProductSelection }
+    ];
+
+    productElements.forEach(({ id, handler }) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('change', handler);
+            eventListeners.inputListeners.push({ element, event: 'change', handler });
+        }
+    });
     
-    // Keyboard shortcuts - MUST BE FIRST
+    // Keyboard shortcuts
     document.addEventListener('keydown', handleKeyboardShortcuts);
+    eventListeners.keyboardListeners.push({ element: document, event: 'keydown', handler: handleKeyboardShortcuts });
+    
+    document.addEventListener('keydown', handleEscapeKey);
+    eventListeners.keyboardListeners.push({ element: document, event: 'keydown', handler: handleEscapeKey });
+    
+    // Modal click listeners
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal')) {
+            e.target.classList.remove('active');
+        }
+    });
+    eventListeners.modalListeners.push({ 
+        element: document, 
+        event: 'click', 
+        handler: (e) => {
+            if (e.target.classList.contains('modal')) {
+                e.target.classList.remove('active');
+            }
+        }
+    });
     
     // Keyboard shortcuts initialized
-    console.log('✅ Keyboard shortcuts ready');
+    console.log('✅ Event listeners setup complete');
 }
+
+// Event listener cleanup function
+function cleanupEventListeners() {
+    console.log('🧹 Cleaning up event listeners...');
+    
+    // Form listeners cleanup
+    eventListeners.formListeners.forEach(({ element, event, handler }) => {
+        if (element) {
+            element.removeEventListener(event, handler);
+        }
+    });
+    eventListeners.formListeners = [];
+    
+    // Keyboard listeners cleanup
+    eventListeners.keyboardListeners.forEach(({ element, event, handler }) => {
+        if (element) {
+            element.removeEventListener(event, handler);
+        }
+    });
+    eventListeners.keyboardListeners = [];
+    
+    // Input listeners cleanup
+    eventListeners.inputListeners.forEach(({ element, event, handler }) => {
+        if (element) {
+            element.removeEventListener(event, handler);
+        }
+    });
+    eventListeners.inputListeners = [];
+    
+    // Modal listeners cleanup
+    eventListeners.modalListeners.forEach(({ element, event, handler }) => {
+        if (element) {
+            element.removeEventListener(event, handler);
+        }
+    });
+    eventListeners.modalListeners = [];
+    
+    // Customer search listeners cleanup
+    eventListeners.customerSearchListeners.forEach(({ element, event, handler }) => {
+        if (element) {
+            element.removeEventListener(event, handler);
+        }
+    });
+    eventListeners.customerSearchListeners = [];
+    
+    console.log('✅ Event listeners cleaned up');
+}
+
+// Reinitialize event listeners
+function reinitializeEventListeners() {
+    console.log('🔄 Reinitializing event listeners...');
+    setupEventListeners();
+    console.log('✅ Event listeners reinitialized');
+}
+
+// Global functions for external access
+window.cleanupEventListeners = cleanupEventListeners;
+window.reinitializeEventListeners = reinitializeEventListeners;
+window.setupEventListeners = setupEventListeners;
+
+// Test function for event listener management
+window.testEventListeners = function() {
+    console.log('🧪 Testing event listener management...');
+    console.log('Current listeners:', eventListeners);
+    
+    // Test cleanup
+    console.log('🧹 Testing cleanup...');
+    cleanupEventListeners();
+    console.log('Listeners after cleanup:', eventListeners);
+    
+    // Test reinitialize
+    console.log('🔄 Testing reinitialize...');
+    reinitializeEventListeners();
+    console.log('Listeners after reinitialize:', eventListeners);
+    
+    console.log('✅ Event listener test completed');
+};
+
+// Example usage: Refresh page with clean event listeners
+window.refreshPageWithCleanListeners = async function() {
+    console.log('🔄 Refreshing page with clean event listeners...');
+    
+    // Clean up all event listeners
+    cleanupEventListeners();
+    
+    // Reload customers
+    await loadCustomers();
+    
+    // Reinitialize event listeners
+    reinitializeEventListeners();
+    
+    console.log('✅ Page refreshed with clean event listeners');
+};
+
+// Test modal functionality
+window.testModalFunctionality = function() {
+    console.log('🧪 Testing modal functionality...');
+    
+    // Test static modals
+    console.log('Testing static modals...');
+    showAddCustomerModal();
+    setTimeout(() => {
+        closeModal('add-customer-modal');
+        console.log('✅ Static modal test completed');
+    }, 1000);
+    
+    // Test dynamic modals
+    setTimeout(() => {
+        console.log('Testing dynamic modals...');
+        showReportsModal();
+        setTimeout(() => {
+            closeModal('reports-modal');
+            console.log('✅ Dynamic modal test completed');
+        }, 1000);
+    }, 2000);
+    
+    console.log('✅ Modal functionality test completed');
+};
 
 // Set default dates
 function setDefaultDates() {
@@ -1107,26 +1287,57 @@ function showAddCustomerModal() {
 }
 
 function showModal(modalId) {
-    document.getElementById(modalId).classList.add('active');
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.add('active');
+        console.log(`Modal ${modalId} shown`);
+    } else {
+        console.warn(`Modal ${modalId} not found in DOM`);
+    }
 }
 
 function closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
         modal.classList.remove('active');
-        // Modal'ı DOM'dan kaldır
-        setTimeout(() => {
-            if (modal.parentNode) {
-                modal.parentNode.removeChild(modal);
-            }
-        }, 300); // CSS transition süresi kadar bekle
+        // Modal'ı DOM'dan kaldırma - sadece gizle
+        // Bu sayede modal'lar tekrar açılabilir
+        console.log(`Modal ${modalId} closed (hidden, not removed from DOM)`);
     }
 }
 
+// Dinamik modal'lar için yardımcı fonksiyon
+function showOrCreateModal(modalId, modalHtml) {
+    let modal = document.getElementById(modalId);
+    
+    if (modal) {
+        // Modal zaten var, sadece göster
+        modal.classList.add('active');
+        console.log(`Existing modal ${modalId} shown`);
+    } else {
+        // Modal yok, oluştur ve göster
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.add('active');
+            console.log(`New modal ${modalId} created and shown`);
+        }
+    }
+    
+    return modal;
+}
+
 // ESC tuşu ile modal kapatma
-document.addEventListener('keydown', (e) => {
+function handleEscapeKey(e) {
     if (e.key === 'Escape') {
-        // Aktif modal'ları bul ve kapat
+        // Bakiye modal'ı için özel kapatma
+        const balanceModal = document.getElementById('balance-modal');
+        if (balanceModal && balanceModal.classList.contains('active')) {
+            closeBalanceModal();
+            return;
+        }
+        
+        // Diğer modal'lar için genel kapatma
         const activeModals = document.querySelectorAll('.modal.active');
         activeModals.forEach(modal => {
             const modalId = modal.id;
@@ -1135,7 +1346,7 @@ document.addEventListener('keydown', (e) => {
             }
         });
     }
-});
+}
 
 // Add customer
 async function handleAddCustomer(e) {
@@ -1847,7 +2058,10 @@ function setupCustomerSearch(inputId, dropdownId) {
     const input = document.getElementById(inputId);
     const dropdown = document.getElementById(dropdownId);
     
-    input.addEventListener('input', (e) => {
+    if (!input || !dropdown) return;
+    
+    // Input event handler
+    const inputHandler = (e) => {
         const searchTerm = e.target.value.trim();
         selectedCustomerId = null; // Reset selection
         
@@ -1856,18 +2070,32 @@ function setupCustomerSearch(inputId, dropdownId) {
         } else {
             hideDropdown(dropdown);
         }
-    });
+    };
     
-    input.addEventListener('blur', () => {
+    // Blur event handler
+    const blurHandler = () => {
         // Delay hiding to allow click on dropdown item
         setTimeout(() => hideDropdown(dropdown), 200);
-    });
+    };
     
-    input.addEventListener('focus', () => {
+    // Focus event handler
+    const focusHandler = () => {
         if (input.value.trim().length >= 3) {
             searchAndShowCustomers(input.value.trim(), dropdown);
         }
-    });
+    };
+    
+    // Add event listeners
+    input.addEventListener('input', inputHandler);
+    input.addEventListener('blur', blurHandler);
+    input.addEventListener('focus', focusHandler);
+    
+    // Store listeners for cleanup
+    eventListeners.customerSearchListeners.push(
+        { element: input, event: 'input', handler: inputHandler },
+        { element: input, event: 'blur', handler: blurHandler },
+        { element: input, event: 'focus', handler: focusHandler }
+    );
 }
 
 function searchAndShowCustomers(searchTerm, dropdown) {
@@ -2014,30 +2242,6 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
-// Modal dışına tıklayınca kapatma
-document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('modal')) {
-        e.target.classList.remove('active');
-    }
-});
-
-// ESC tuşu ile modal kapatma
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        // Bakiye modal'ı için özel kapatma
-        const balanceModal = document.getElementById('balance-modal');
-        if (balanceModal) {
-            closeBalanceModal();
-            return;
-        }
-        
-        // Diğer modal'lar için genel kapatma
-        document.querySelectorAll('.modal.active').forEach(modal => {
-            modal.classList.remove('active');
-        });
-    }
-});
-
 // Keyboard shortcuts handler
 function handleKeyboardShortcuts(e) {
     // Check if it's a function key
@@ -2074,9 +2278,10 @@ function handleKeyboardShortcuts(e) {
         return;
     }
     
-    // Function keys - Main shortcuts
+    // Function keys - Main shortcuts (always work, even in modals)
     switch (e.key) {
         case 'F1':
+            e.preventDefault();
             focusCustomerSearch();
             break;
         case 'F2':
@@ -2533,8 +2738,8 @@ function showDetailedBalanceModal(data) {
         </div>
     `;
     
-    // Modal'ı body'e ekle
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    // Modal'ı göster veya oluştur
+    showOrCreateModal('balance-modal', modalHtml);
     
     // Modal açıldıktan sonra ana ekrandaki tablo içeriğini modal'daki tabloya kopyala
     setTimeout(() => {
@@ -2551,7 +2756,9 @@ function showDetailedBalanceModal(data) {
 function closeBalanceModal() {
     const modal = document.getElementById('balance-modal');
     if (modal) {
-        modal.remove();
+        modal.classList.remove('active');
+        // Modal'ı DOM'dan kaldırma - sadece gizle
+        console.log('Balance modal closed (hidden, not removed from DOM)');
     }
 }
 
@@ -3638,14 +3845,20 @@ function showReportsModal() {
         </style>
     `;
     
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    // Modal'ı göster veya oluştur
+    showOrCreateModal('reports-modal', modalHtml);
     
     // Tarih aralığını varsayılan olarak son 30 gün yap
     const today = new Date();
     const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
     
-    document.getElementById('report-start-date').value = thirtyDaysAgo.toISOString().split('T')[0];
-    document.getElementById('report-end-date').value = today.toISOString().split('T')[0];
+    // Modal oluşturulduktan sonra tarih alanlarını ayarla
+    setTimeout(() => {
+        const startDateInput = document.getElementById('report-start-date');
+        const endDateInput = document.getElementById('report-end-date');
+        if (startDateInput) startDateInput.value = thirtyDaysAgo.toISOString().split('T')[0];
+        if (endDateInput) endDateInput.value = today.toISOString().split('T')[0];
+    }, 100);
 }
 
 // Ürün Yönetimi Modal - Profesyonel Versiyon
@@ -3818,7 +4031,7 @@ async function showProductManagement() {
             </div>
         `;
         
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        showOrCreateModal('product-management-modal', modalHtml);
         
     } catch (error) {
         console.error('Product management modal error:', error);
@@ -3998,7 +4211,7 @@ async function editProduct(productId) {
             </div>
         `;
         
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        showOrCreateModal('edit-product-modal', modalHtml);
         
     } catch (error) {
         console.error('Edit product modal error:', error);
@@ -4171,7 +4384,7 @@ function showAddProductModal() {
         </div>
     `;
     
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    showOrCreateModal('add-product-modal', modalHtml);
 }
 
 // Ürünleri Excel'e aktar
@@ -4435,7 +4648,7 @@ async function showSettingsModal() {
         </div>
     `;
     
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    showOrCreateModal('settings-modal', modalHtml);
         
     } catch (error) {
         console.error('Settings modal error:', error);
@@ -4609,7 +4822,7 @@ function showGeneralFinancialModal(data) {
         </div>
     `;
     
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    showOrCreateModal('general-financial-modal', modalHtml);
 }
 
 // Genel Finansal Rapor Export Fonksiyonları
@@ -5291,7 +5504,7 @@ function showCustomerAnalysisModal(customerAnalysis) {
         </div>
     `;
     
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    showOrCreateModal('customer-analysis-modal', modalHtml);
 }
 
 function showTransactionReportModal(allTransactions) {
@@ -5337,7 +5550,7 @@ function showTransactionReportModal(allTransactions) {
         </div>
     `;
     
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    showOrCreateModal('transaction-report-modal', modalHtml);
 }
 
 function showDebtAnalysisModal(debtAnalysis) {
@@ -5387,7 +5600,7 @@ function showDebtAnalysisModal(debtAnalysis) {
         </div>
     `;
     
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    showOrCreateModal('debt-analysis-modal', modalHtml);
 }
 
 function showMonthlyReportModal(monthlyData) {
@@ -5435,7 +5648,7 @@ function showMonthlyReportModal(monthlyData) {
         </div>
     `;
     
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    showOrCreateModal('monthly-report-modal', modalHtml);
 }
 
 function showProductReportModal(productData) {
@@ -5483,7 +5696,7 @@ function showProductReportModal(productData) {
         </div>
     `;
     
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    showOrCreateModal('product-report-modal', modalHtml);
 }
 
 function restoreData() {
