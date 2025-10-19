@@ -1,6 +1,6 @@
 {
   "name": "masaustu-veresiye-takip",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Kısayol tuşları ile hızlı çalışan masaüstü veresiye takip uygulaması",
   "main": "main.js",
   "scripts": {
@@ -11,7 +11,13 @@
     "build": "electron-builder",
     "build-win": "electron-builder --win",
     "build-mac": "electron-builder --mac",
-    "build-linux": "electron-builder --linux"
+    "build-linux": "electron-builder --linux",
+    "seed:v0": "node seed-data.js v0",
+    "seed:v1": "node seed-data.js v1",
+    "seed:v2": "node seed-data.js v2",
+    "seed:clear": "node seed-data.js clear",
+    "seed:list": "node seed-data.js list",
+    "test:migration": "node -e \"require('./migration-manager').initializeMigrationManager().then(m => m.testMigrations())\""
   },
   "keywords": [
     "veresiye",

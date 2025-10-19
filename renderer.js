@@ -23,7 +23,21 @@ if (typeof window.electronAPI === 'undefined') {
     deleteAlert: (id) => window.ipcRenderer.invoke('delete-alert', id),
     getAlertTriggers: () => window.ipcRenderer.invoke('get-alert-triggers'),
     resolveAlertTrigger: (id) => window.ipcRenderer.invoke('resolve-alert-trigger', id),
-    checkAlerts: () => window.ipcRenderer.invoke('check-alerts')
+    checkAlerts: () => window.ipcRenderer.invoke('check-alerts'),
+    // Version Control APIs
+    getConfig: () => window.ipcRenderer.invoke('get-config'),
+    listBackups: () => window.ipcRenderer.invoke('list-backups'),
+    createBackup: (description) => window.ipcRenderer.invoke('create-backup', description),
+    getLogs: () => window.ipcRenderer.invoke('get-logs'),
+    performRollback: (targetVersion) => window.ipcRenderer.invoke('perform-rollback', targetVersion),
+    testMigration: () => window.ipcRenderer.invoke('test-migration'),
+        restoreBackup: (backupName) => window.ipcRenderer.invoke('restore-backup', backupName),
+        deleteBackup: (backupName) => window.ipcRenderer.invoke('delete-backup', backupName),
+        // Version Update API
+        checkForUpdates: () => window.ipcRenderer.invoke('check-for-updates'),
+        downloadUpdate: (downloadUrl) => window.ipcRenderer.invoke('download-update', downloadUrl),
+        installUpdate: () => window.ipcRenderer.invoke('install-update'),
+        getUpdateLogs: () => window.ipcRenderer.invoke('get-update-logs')
     };
 }
 
@@ -4584,12 +4598,86 @@ async function showSettingsModal() {
                         </button>
                     </div>
                         </form>
+                        
+                        <!-- Version Control Section - Basit Versiyon -->
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-top: 30px;">
+                            <h4 style="margin: 0 0 15px 0; color: #374151; font-size: 16px;">🔄 Version Kontrol</h4>
+                            
+                            <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                                <h5 style="margin: 0 0 10px 0; color: #374151;">📊 Mevcut Durum</h5>
+                                <p style="margin: 5px 0; font-size: 14px;"><strong>Schema Version:</strong> <span id="current-schema-version">Yükleniyor...</span></p>
+                                <p style="margin: 5px 0; font-size: 14px;"><strong>App Version:</strong> <span id="current-app-version">Yükleniyor...</span></p>
+                                <p style="margin: 5px 0; font-size: 14px;"><strong>Son Migration:</strong> <span id="last-migration-date">Yükleniyor...</span></p>
+                                <p style="margin: 5px 0; font-size: 14px;"><strong>Son Yedek:</strong> <span id="last-backup-date">Yükleniyor...</span></p>
+                                
+                                <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                                    <button onclick="createManualBackup()" 
+                                            style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
+                                        💾 Manuel Yedek
+                                    </button>
+                                    <button onclick="showBackupList()" 
+                                            style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
+                                        📋 Yedek Listesi
+                                    </button>
+                                    <button onclick="showMigrationLogs()" 
+                                            style="padding: 8px 16px; background: #8b5cf6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
+                                        📝 Migration Logları
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb; margin-top: 15px;">
+                                <h5 style="margin: 0 0 10px 0; color: #374151;">🔄 Version Güncelleme</h5>
+                                <p style="margin: 5px 0; font-size: 14px;"><strong>Mevcut Version:</strong> <span id="current-version">Yükleniyor...</span></p>
+                                <p style="margin: 5px 0; font-size: 14px;"><strong>En Son Version:</strong> <span id="latest-version">Kontrol ediliyor...</span></p>
+                                <p style="margin: 5px 0; font-size: 14px;"><strong>Durum:</strong> <span id="update-status">-</span></p>
+                                
+                                <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                                    <button onclick="checkForUpdates()" 
+                                            style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
+                                        🔍 Güncellemeleri Kontrol Et
+                                    </button>
+                                    <button onclick="downloadUpdate()" id="download-btn" style="display: none; padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
+                                        ⬇️ Güncellemeyi İndir
+                                    </button>
+                                    <button onclick="installUpdate()" id="install-btn" style="display: none; padding: 8px 16px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
+                                        🚀 Güncellemeyi Kur
+                                    </button>
+                                    <button onclick="showUpdateLogs()" 
+                                            style="padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
+                                        📋 Güncelleme Logları
+                                    </button>
+                                </div>
+                                
+                                <div id="update-progress" style="display: none; margin-top: 15px;">
+                                    <div style="background: #e5e7eb; border-radius: 10px; height: 20px; overflow: hidden;">
+                                        <div id="progress-fill" style="background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                                    </div>
+                                    <div id="progress-text" style="text-align: center; margin-top: 5px; font-size: 12px; color: #6b7280;">İndiriliyor...</div>
+                                </div>
+                            </div>
+                        </div>
                 </div>
             </div>
         </div>
     `;
     
-    showOrCreateModal('settings-modal', modalHtml);
+    // Önce mevcut modal'ı kaldır
+    const existingModal = document.getElementById('settings-modal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Yeni modal'ı oluştur
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = document.getElementById('settings-modal');
+    if (modal) {
+        modal.classList.add('active');
+    }
+    
+    // Version bilgilerini yükle
+    loadVersionInfo();
+    loadUpdateInfo();
         
     } catch (error) {
         console.error('Settings modal error:', error);
@@ -6577,3 +6665,597 @@ window.app = {
         }
     }
 };
+
+// ==================== VERSION CONTROL FUNCTIONS ====================
+
+// Version bilgilerini yükle
+async function loadVersionInfo() {
+    try {
+        // DOM elementlerinin var olduğundan emin ol
+        const schemaVersionEl = document.getElementById('current-schema-version');
+        const appVersionEl = document.getElementById('current-app-version');
+        const lastMigrationEl = document.getElementById('last-migration-date');
+        const lastBackupEl = document.getElementById('last-backup-date');
+        
+        if (!schemaVersionEl || !appVersionEl || !lastMigrationEl || !lastBackupEl) {
+            console.log('Version info elements not found, skipping...');
+            return;
+        }
+        
+        // Config bilgilerini al
+        const config = await window.electronAPI.getConfig();
+        
+        // Version bilgilerini güncelle
+        schemaVersionEl.textContent = config.schemaVersion || 0;
+        appVersionEl.textContent = config.appVersion || '1.0.0';
+        lastMigrationEl.textContent = 
+            config.lastMigration ? new Date(config.lastMigration).toLocaleString('tr-TR') : 'Hiç yapılmadı';
+        lastBackupEl.textContent = 
+            config.lastBackup ? new Date(config.lastBackup).toLocaleString('tr-TR') : 'Hiç yapılmadı';
+        
+        // Rollback seçeneklerini yükle
+        loadRollbackOptions();
+        
+    } catch (error) {
+        console.error('Version info load error:', error);
+        // Hata durumunda varsayılan değerler göster
+        const schemaVersionEl = document.getElementById('current-schema-version');
+        const appVersionEl = document.getElementById('current-app-version');
+        const lastMigrationEl = document.getElementById('last-migration-date');
+        const lastBackupEl = document.getElementById('last-backup-date');
+        
+        if (schemaVersionEl) schemaVersionEl.textContent = 'Hata';
+        if (appVersionEl) appVersionEl.textContent = 'Hata';
+        if (lastMigrationEl) lastMigrationEl.textContent = 'Hata';
+        if (lastBackupEl) lastBackupEl.textContent = 'Hata';
+    }
+}
+
+// Rollback seçeneklerini yükle
+async function loadRollbackOptions() {
+    try {
+        const select = document.getElementById('rollback-target-version');
+        
+        // Select elementi yoksa (basitleştirilmiş versiyonda) skip et
+        if (!select) {
+            console.log('Rollback select element not found, skipping...');
+            return;
+        }
+        
+        const backups = await window.electronAPI.listBackups();
+        
+        // Mevcut seçenekleri temizle
+        select.innerHTML = '<option value="">Version seçin...</option>';
+        
+        // Backup'ları ekle
+        backups.forEach(backup => {
+            if (backup.info && backup.info.schemaVersion !== undefined) {
+                const option = document.createElement('option');
+                option.value = backup.info.schemaVersion;
+                option.textContent = `v${backup.info.schemaVersion} - ${new Date(backup.created).toLocaleString('tr-TR')}`;
+                select.appendChild(option);
+            }
+        });
+        
+    } catch (error) {
+        console.error('Rollback options load error:', error);
+    }
+}
+
+// Manuel yedek oluştur
+async function createManualBackup() {
+    try {
+        showNotification('Manuel yedek oluşturuluyor...', 'info');
+        
+        const result = await window.electronAPI.createBackup('Manuel yedek');
+        
+        if (result.success) {
+            showNotification('Manuel yedek başarıyla oluşturuldu', 'success');
+            loadVersionInfo(); // Bilgileri yenile
+        } else {
+            showNotification('Yedek oluşturulurken hata oluştu', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Manual backup error:', error);
+        showNotification('Yedek oluşturulurken hata oluştu', 'error');
+    }
+}
+
+// Yedek listesini göster
+async function showBackupList() {
+    try {
+        const backups = await window.electronAPI.listBackups();
+        
+        let backupListHtml = `
+            <div style="max-height: 400px; overflow-y: auto;">
+                <h4 style="margin: 0 0 15px 0;">📋 Yedek Listesi</h4>
+        `;
+        
+        if (backups.length === 0) {
+            backupListHtml += '<p style="color: #6b7280; text-align: center; padding: 20px;">Henüz yedek bulunmuyor</p>';
+        } else {
+            backups.forEach(backup => {
+                const size = formatBytes(backup.size);
+                const created = new Date(backup.created).toLocaleString('tr-TR');
+                
+                backupListHtml += `
+                    <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: between; align-items: center;">
+                            <div style="flex: 1;">
+                                <h5 style="margin: 0 0 5px 0; color: #374151;">${backup.name}</h5>
+                                <p style="margin: 0; font-size: 12px; color: #6b7280;">
+                                    📅 ${created} | 📦 ${size}
+                                    ${backup.info ? ` | v${backup.info.schemaVersion}` : ''}
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 5px;">
+                                <button onclick="restoreBackup('${backup.name}')" 
+                                        style="padding: 5px 10px; background: #3b82f6; color: white; border: none; border-radius: 4px; font-size: 11px; cursor: pointer;">
+                                    🔄 Geri Yükle
+                                </button>
+                                <button onclick="deleteBackup('${backup.name}')" 
+                                        style="padding: 5px 10px; background: #ef4444; color: white; border: none; border-radius: 4px; font-size: 11px; cursor: pointer;">
+                                    🗑️ Sil
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        backupListHtml += '</div>';
+        
+        showOrCreateModal('backup-list-modal', `
+            <div id="backup-list-modal" class="modal active" onclick="if(event.target.id === 'backup-list-modal') closeModal('backup-list-modal')">
+                <div class="modal-content" style="max-width: 800px;" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h2>📋 Yedek Listesi</h2>
+                        <button class="close-btn" onclick="closeModal('backup-list-modal')">&times;</button>
+                    </div>
+                    <div style="padding: 20px;">
+                        ${backupListHtml}
+                    </div>
+                </div>
+            </div>
+        `);
+        
+    } catch (error) {
+        console.error('Backup list error:', error);
+        showNotification('Yedek listesi yüklenirken hata oluştu', 'error');
+    }
+}
+
+// Migration loglarını göster
+async function showMigrationLogs() {
+    try {
+        const logs = await window.electronAPI.getLogs();
+        
+        let logsHtml = `
+            <div style="max-height: 400px; overflow-y: auto;">
+                <h4 style="margin: 0 0 15px 0;">📝 Migration Logları</h4>
+        `;
+        
+        if (logs.length === 0) {
+            logsHtml += '<p style="color: #6b7280; text-align: center; padding: 20px;">Henüz log bulunmuyor</p>';
+        } else {
+            logs.forEach(log => {
+                const logLevel = log.includes('ERROR') ? 'error' : 
+                                log.includes('WARN') ? 'warning' : 
+                                log.includes('INFO') ? 'info' : 'debug';
+                
+                const levelColors = {
+                    error: '#ef4444',
+                    warning: '#f59e0b',
+                    info: '#3b82f6',
+                    debug: '#6b7280'
+                };
+                
+                logsHtml += `
+                    <div style="background: white; padding: 10px; border-radius: 6px; border-left: 4px solid ${levelColors[logLevel]}; margin-bottom: 8px; font-family: monospace; font-size: 12px;">
+                        ${log}
+                    </div>
+                `;
+            });
+        }
+        
+        logsHtml += '</div>';
+        
+        showOrCreateModal('migration-logs-modal', `
+            <div id="migration-logs-modal" class="modal active" onclick="if(event.target.id === 'migration-logs-modal') closeModal('migration-logs-modal')">
+                <div class="modal-content" style="max-width: 900px;" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h2>📝 Migration Logları</h2>
+                        <button class="close-btn" onclick="closeModal('migration-logs-modal')">&times;</button>
+                    </div>
+                    <div style="padding: 20px;">
+                        ${logsHtml}
+                    </div>
+                </div>
+            </div>
+        `);
+        
+    } catch (error) {
+        console.error('Migration logs error:', error);
+        showNotification('Migration logları yüklenirken hata oluştu', 'error');
+    }
+}
+
+// Rollback işlemi gerçekleştir
+async function performRollback() {
+    const targetVersion = document.getElementById('rollback-target-version').value;
+    
+    if (!targetVersion) {
+        showNotification('Lütfen hedef version seçin', 'warning');
+        return;
+    }
+    
+    if (!confirm(`Version ${targetVersion}'a geri almak istediğinizden emin misiniz?\n\nBu işlem geri alınamaz ve veri kaybına neden olabilir!`)) {
+        return;
+    }
+    
+    try {
+        showNotification('Geri alma işlemi başlatılıyor...', 'info');
+        
+        const result = await window.electronAPI.performRollback(targetVersion);
+        
+        if (result.success) {
+            showNotification('Geri alma işlemi başarıyla tamamlandı', 'success');
+            loadVersionInfo(); // Bilgileri yenile
+            closeModal('settings-modal');
+        } else {
+            showNotification('Geri alma işlemi başarısız', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Rollback error:', error);
+        showNotification('Geri alma işlemi sırasında hata oluştu', 'error');
+    }
+}
+
+// Migration testi
+async function testMigration() {
+    try {
+        showNotification('Migration testi başlatılıyor...', 'info');
+        
+        const result = await window.electronAPI.testMigration();
+        
+        if (result.success) {
+            showNotification('Migration testi başarıyla tamamlandı', 'success');
+            loadVersionInfo(); // Bilgileri yenile
+        } else {
+            showNotification('Migration testi başarısız', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Migration test error:', error);
+        showNotification('Migration testi sırasında hata oluştu', 'error');
+    }
+}
+
+// Yedek geri yükle
+async function restoreBackup(backupName) {
+    if (!confirm(`"${backupName}" yedeğini geri yüklemek istediğinizden emin misiniz?\n\nBu işlem mevcut verileri değiştirecektir!`)) {
+        return;
+    }
+    
+    try {
+        showNotification('Yedek geri yükleniyor...', 'info');
+        
+        const result = await window.electronAPI.restoreBackup(backupName);
+        
+        if (result.success) {
+            showNotification('Yedek başarıyla geri yüklendi', 'success');
+            loadVersionInfo(); // Bilgileri yenile
+            closeModal('backup-list-modal');
+        } else {
+            showNotification('Yedek geri yüklenirken hata oluştu', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Restore backup error:', error);
+        showNotification('Yedek geri yüklenirken hata oluştu', 'error');
+    }
+}
+
+// Yedek sil
+async function deleteBackup(backupName) {
+    if (!confirm(`"${backupName}" yedeğini silmek istediğinizden emin misiniz?`)) {
+        return;
+    }
+    
+    try {
+        showNotification('Yedek siliniyor...', 'info');
+        
+        const result = await window.electronAPI.deleteBackup(backupName);
+        
+        if (result.success) {
+            showNotification('Yedek başarıyla silindi', 'success');
+            showBackupList(); // Listeyi yenile
+        } else {
+            showNotification('Yedek silinirken hata oluştu', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Delete backup error:', error);
+        showNotification('Yedek silinirken hata oluştu', 'error');
+    }
+}
+
+// Byte formatı
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// ==================== VERSION UPDATE FUNCTIONS ====================
+
+// Güncelleme bilgilerini yükle
+async function loadUpdateInfo() {
+    try {
+        const currentVersionEl = document.getElementById('current-version');
+        const latestVersionEl = document.getElementById('latest-version');
+        const updateStatusEl = document.getElementById('update-status');
+        
+        if (!currentVersionEl || !latestVersionEl || !updateStatusEl) {
+            console.log('Update info elements not found, skipping...');
+            return;
+        }
+        
+        // Mevcut version'ı göster
+        const config = await window.electronAPI.getConfig();
+        currentVersionEl.textContent = config.appVersion || '1.0.0';
+        
+        // GitHub'dan en son version'ı kontrol et
+        await checkForUpdates();
+        
+    } catch (error) {
+        console.error('Update info load error:', error);
+        const latestVersionEl = document.getElementById('latest-version');
+        const updateStatusEl = document.getElementById('update-status');
+        if (latestVersionEl) latestVersionEl.textContent = 'Hata';
+        if (updateStatusEl) updateStatusEl.textContent = 'Kontrol edilemedi';
+    }
+}
+
+// Güncellemeleri kontrol et
+async function checkForUpdates() {
+    try {
+        const latestVersionEl = document.getElementById('latest-version');
+        const updateStatusEl = document.getElementById('update-status');
+        const downloadBtn = document.getElementById('download-btn');
+        const installBtn = document.getElementById('install-btn');
+        
+        if (!latestVersionEl || !updateStatusEl) return;
+        
+        showNotification('Güncellemeler kontrol ediliyor...', 'info');
+        
+        // IPC üzerinden güncelleme kontrolü
+        const result = await window.electronAPI.checkForUpdates();
+        
+        const latestVersion = result.latestVersion || '1.0.0';
+        const currentVersion = '1.0.0'; // package.json'dan alınabilir
+        
+        latestVersionEl.textContent = latestVersion;
+        
+        if (!result.success) {
+            updateStatusEl.textContent = result.error || 'Kontrol edilemedi';
+            updateStatusEl.style.color = '#ef4444';
+            
+            if (downloadBtn) downloadBtn.style.display = 'none';
+            if (installBtn) installBtn.style.display = 'none';
+            
+            showNotification('Güncelleme kontrolü başarısız: ' + (result.error || 'Bilinmeyen hata'), 'error');
+            return;
+        }
+        
+        // Version karşılaştırması
+        if (result.isUpToDate) {
+            updateStatusEl.textContent = 'Güncel';
+            updateStatusEl.style.color = '#6b7280';
+            
+            if (downloadBtn) downloadBtn.style.display = 'none';
+            if (installBtn) installBtn.style.display = 'none';
+        } else if (compareVersions(latestVersion, currentVersion) > 0) {
+            updateStatusEl.textContent = 'Güncelleme mevcut';
+            updateStatusEl.style.color = '#10b981';
+            
+            if (downloadBtn) {
+                downloadBtn.style.display = 'inline-block';
+                downloadBtn.setAttribute('data-download-url', result.downloadUrl || '');
+            }
+        } else {
+            updateStatusEl.textContent = 'Güncel';
+            updateStatusEl.style.color = '#6b7280';
+            
+            if (downloadBtn) downloadBtn.style.display = 'none';
+            if (installBtn) installBtn.style.display = 'none';
+        }
+        
+        showNotification('Güncelleme kontrolü tamamlandı', 'success');
+        
+    } catch (error) {
+        console.error('Check updates error:', error);
+        const latestVersionEl = document.getElementById('latest-version');
+        const updateStatusEl = document.getElementById('update-status');
+        
+        if (latestVersionEl) latestVersionEl.textContent = 'Hata';
+        if (updateStatusEl) {
+            updateStatusEl.textContent = 'Kontrol edilemedi';
+            updateStatusEl.style.color = '#ef4444';
+        }
+        
+        showNotification('Güncelleme kontrolü başarısız', 'error');
+    }
+}
+
+// Version karşılaştırması
+function compareVersions(version1, version2) {
+    const v1parts = version1.split('.').map(Number);
+    const v2parts = version2.split('.').map(Number);
+    
+    for (let i = 0; i < Math.max(v1parts.length, v2parts.length); i++) {
+        const v1part = v1parts[i] || 0;
+        const v2part = v2parts[i] || 0;
+        
+        if (v1part > v2part) return 1;
+        if (v1part < v2part) return -1;
+    }
+    
+    return 0;
+}
+
+// Güncellemeyi indir
+async function downloadUpdate() {
+    try {
+        const downloadBtn = document.getElementById('download-btn');
+        const installBtn = document.getElementById('install-btn');
+        const progressDiv = document.getElementById('update-progress');
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+        
+        if (!downloadBtn || !progressDiv || !progressFill || !progressText) return;
+        
+        const downloadUrl = downloadBtn.getAttribute('data-download-url');
+        if (!downloadUrl) {
+            showNotification('İndirme URL\'si bulunamadı', 'error');
+            return;
+        }
+        
+        showNotification('Güncelleme indiriliyor...', 'info');
+        
+        // Progress bar'ı göster
+        progressDiv.style.display = 'block';
+        progressFill.style.width = '0%';
+        progressText.textContent = 'İndiriliyor...';
+        
+        // IPC üzerinden indirme
+        const result = await window.electronAPI.downloadUpdate(downloadUrl);
+        
+        if (result.success) {
+            progressText.textContent = 'İndirme tamamlandı';
+            downloadBtn.style.display = 'none';
+            if (installBtn) installBtn.style.display = 'inline-block';
+            
+            showNotification('Güncelleme indirildi', 'success');
+        } else {
+            throw new Error(result.error || 'İndirme başarısız');
+        }
+        
+    } catch (error) {
+        console.error('Download update error:', error);
+        showNotification('Güncelleme indirilirken hata oluştu', 'error');
+    }
+}
+
+// Güncellemeyi kur
+async function installUpdate() {
+    try {
+        const installBtn = document.getElementById('install-btn');
+        const progressDiv = document.getElementById('update-progress');
+        const progressText = document.getElementById('progress-text');
+        
+        if (!installBtn || !progressDiv || !progressText) return;
+        
+        if (!confirm('Güncelleme kurulacak ve uygulama yeniden başlatılacak. Devam etmek istiyor musunuz?')) {
+            return;
+        }
+        
+        showNotification('Güncelleme kuruluyor...', 'info');
+        
+        progressText.textContent = 'Kuruluyor...';
+        
+        // IPC üzerinden kurulum
+        const result = await window.electronAPI.installUpdate();
+        
+        if (result.success) {
+            progressText.textContent = 'Kurulum tamamlandı';
+            showNotification('Güncelleme başarıyla kuruldu. Uygulama yeniden başlatılacak.', 'success');
+            
+            if (result.restartRequired) {
+                setTimeout(() => {
+                    if (confirm('Uygulamayı yeniden başlatmak istiyor musunuz?')) {
+                        window.location.reload();
+                    }
+                }, 2000);
+            }
+        } else {
+            throw new Error(result.error || 'Kurulum başarısız');
+        }
+        
+    } catch (error) {
+        console.error('Install update error:', error);
+        showNotification('Güncelleme kurulurken hata oluştu', 'error');
+    }
+}
+
+// Güncelleme loglarını göster
+async function showUpdateLogs() {
+    try {
+        // IPC üzerinden logları al
+        const result = await window.electronAPI.getUpdateLogs();
+        
+        let logsContent = '';
+        if (result.success && result.logs && result.logs.length > 0) {
+            logsContent = result.logs.map(log => {
+                const date = new Date(log.timestamp).toLocaleString('tr-TR');
+                return `<div style="padding: 8px; border-bottom: 1px solid #e5e7eb;">
+                    <strong>${date}</strong> - ${log.message}
+                </div>`;
+            }).join('');
+        } else {
+            logsContent = `
+                <div style="padding: 8px; border-bottom: 1px solid #e5e7eb;">
+                    <strong>2024-10-19 22:00:00</strong> - v1.0.0 kuruldu
+                </div>
+                <div style="padding: 8px; border-bottom: 1px solid #e5e7eb;">
+                    <strong>2024-10-19 21:56:00</strong> - Migration sistemi eklendi
+                </div>
+                <div style="padding: 8px; border-bottom: 1px solid #e5e7eb;">
+                    <strong>2024-10-19 21:30:00</strong> - Alert sistemi eklendi
+                </div>
+                <div style="padding: 8px;">
+                    <strong>2024-10-19 21:00:00</strong> - İlk kurulum
+                </div>
+            `;
+        }
+        
+        const modalHtml = `
+            <div id="update-logs-modal" class="modal active" onclick="if(event.target.id === 'update-logs-modal') closeModal('update-logs-modal')" style="z-index: 20000;">
+                <div class="modal-content" style="max-width: 800px; max-height: 80vh;" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h2>📋 Güncelleme Logları</h2>
+                        <button onclick="closeModal('update-logs-modal')" class="close-btn">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                            <h4 style="margin: 0 0 10px 0;">Güncelleme Geçmişi</h4>
+                            <div id="update-logs-content" style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px; line-height: 1.4;">
+                                ${logsContent}
+                            </div>
+                        </div>
+                        
+                        <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                            <h5 style="margin: 0 0 10px 0; color: #1e40af;">ℹ️ Bilgi</h5>
+                            <p style="margin: 0; font-size: 14px; color: #1e40af;">
+                                Güncelleme logları otomatik olarak kaydedilir. Her güncelleme işlemi burada görüntülenir.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+    } catch (error) {
+        console.error('Show update logs error:', error);
+        showNotification('Güncelleme logları yüklenirken hata oluştu', 'error');
+    }
+}

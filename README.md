@@ -1,180 +1,166 @@
-# 🏪 Masaüstü Veresiye Takip Uygulaması
+# 📊 Veresiye Takip - Masaüstü Uygulaması
 
-Kısayol tuşları ile hızlı çalışan, modern masaüstü veresiye takip uygulaması. Electron ve SQLite kullanılarak geliştirilmiştir.
+Modern, hızlı ve güvenli masaüstü veresiye takip uygulaması. Electron tabanlı, kısayol tuşları ile çalışan, veri güvenliği odaklı tasarım.
 
 ## ✨ Özellikler
 
-- 🚀 **Hızlı Kısayol Tuşları**: F1-F7 tuşları ile anında işlem yapma
-- 👥 **Müşteri Yönetimi**: Kolay müşteri ekleme ve takibi
-- 💰 **Borç Takibi**: Hızlı borç girişi ve ödeme alma
-- 📊 **Dashboard**: Anlık istatistikler ve özet bilgiler
-- 💾 **Yerel Veritabanı**: SQLite ile güvenli veri saklama
-- 🎨 **Modern Arayüz**: Kullanıcı dostu ve şık tasarım
+### 🚀 Temel Özellikler
+- **Hızlı Müşteri Yönetimi**: F1-F7 kısayol tuşları ile hızlı işlemler
+- **Ürün Yönetimi**: Stok takibi ve fiyat yönetimi
+- **Satış/Purchase Takibi**: Detaylı işlem geçmişi
+- **Uyarı Sistemi**: Stok ve borç uyarıları
+- **Excel İmport/Export**: Veri aktarımı
+- **PDF Raporları**: Detaylı raporlama
 
-## ⌨️ Kısayol Tuşları
+### 🔒 Veri Güvenliği
+- **Otomatik Yedekleme**: Her migration öncesi otomatik yedek
+- **Migration Sistemi**: Güvenli veri güncelleme
+- **Rollback Desteği**: Hata durumunda geri alma
+- **Single Instance**: Tek kopya çalışma
+- **Content Security Policy**: Güvenlik katmanları
 
-| Tuş | İşlev |
-|-----|-------|
-| **F1** | Yeni Müşteri Ekle |
-| **F5** | Cari Aç (Müşteri Seç) |
-| **F6** | Hızlı Borç Girişi |
-| **F7** | Ödeme Al |
-| **F12** | Geliştirici Araçları |
-| **Ctrl+Q** | Uygulamadan Çık |
+### 📁 Veri Yönetimi
+- **Organized Data Structure**: `userData/VeresiyeTakip/` altında düzenli klasör yapısı
+- **Config Management**: JSON tabanlı konfigürasyon
+- **Logging System**: Detaylı log kayıtları
+- **Backup Management**: Otomatik yedekleme ve temizleme
 
-## 🚀 Kurulum
+## 🛠️ Kurulum
 
 ### Gereksinimler
-- Node.js 16+ 
+- Node.js 16+
 - npm veya yarn
+- Electron 25+
 
-### Adımlar
-
-1. **Projeyi klonlayın:**
+### Kurulum Adımları
 ```bash
-git clone <repo-url>
-cd masaustu-veresiye-takip
-```
+# Repository'yi klonla
+git clone https://github.com/ulaskutay/etic-ajans-veresiye-takip.git
+cd etic-ajans-veresiye-takip
 
-2. **Bağımlılıkları yükleyin:**
-```bash
+# Bağımlılıkları yükle
 npm install
-```
 
-3. **Native modülleri yeniden derleyin (önemli!):**
-```bash
-npm install --save-dev electron-rebuild
-npm run rebuild
-```
-> **Not**: `better-sqlite3` native bir modül olduğu için Electron ile uyumlu olması gerekir. Eğer "müşteri eklenirken hata oluştu" hatası alıyorsanız, yukarıdaki komutu çalıştırın.
-
-4. **Uygulamayı çalıştırın:**
-```bash
+# Uygulamayı başlat
 npm start
 ```
 
+## 📋 Kullanım
+
+### Kısayol Tuşları
+- **F1**: Yeni Müşteri
+- **F5**: Cari Aç
+- **F6**: Hızlı Borç
+- **F7**: Ödeme Al
+- **F12**: Geliştirici Araçları
+- **Ctrl+R**: Yeniden Yükle
+
+### Veri Yönetimi
+```bash
+# Test verisi oluştur
+npm run seed:v0    # v0 formatında test verisi
+npm run seed:v1    # v1 formatında test verisi (createdAt ile)
+npm run seed:v2    # v2 formatında test verisi (appearance ile)
+
+# Test verilerini temizle
+npm run seed:clear
+
+# Test verilerini listele
+npm run seed:list
+
+# Migration testi
+npm run test:migration
+```
+
+## 🏗️ Mimari
+
+### Veri Yapısı
+```
+userData/VeresiyeTakip/
+├── db/                 # Veritabanı dosyaları
+├── config/             # Konfigürasyon dosyaları
+├── backups/            # Otomatik yedekler
+├── logs/               # Log dosyaları
+└── migrations/         # Migration dosyaları
+```
+
+### Sistem Bileşenleri
+- **DataManager**: Klasör yönetimi ve dosya işlemleri
+- **ConfigManager**: Konfigürasyon yönetimi
+- **BackupManager**: Yedekleme ve geri yükleme
+- **MigrationManager**: Veri güncelleme sistemi
+- **Logger**: Log yönetimi
+
+### Migration Sistemi
+- **v1**: `createdAt` alanı ekleme
+- **v2**: Theme yapısını `appearance` olarak güncelleme
+- **v3-v5**: Database schema güncellemeleri
+
 ## 🔧 Geliştirme
 
-### Geliştirme modunda çalıştırma:
-```bash
-npm run dev
+### Proje Yapısı
+```
+├── main.js                 # Ana Electron süreci
+├── renderer.js             # Renderer süreci
+├── index.html              # Ana UI
+├── styles.css              # Stil dosyası
+├── data-manager.js         # Veri yönetimi
+├── config-manager.js       # Konfigürasyon yönetimi
+├── backup-manager.js       # Yedekleme sistemi
+├── migration-manager.js    # Migration sistemi
+├── logger.js               # Log sistemi
+├── seed-data.js            # Test veri oluşturucu
+├── splash.html             # Splash ekranı
+└── package.json             # Proje konfigürasyonu
 ```
 
-### Uygulama paketleme:
+### Build ve Dağıtım
 ```bash
-# Tüm platformlar için
+# Development build
+npm run dev
+
+# Production build
 npm run build
 
-# Sadece Windows için
-npm run build-win
-
-# Sadece macOS için
-npm run build-mac
-
-# Sadece Linux için
-npm run build-linux
+# Platform specific builds
+npm run build-win    # Windows
+npm run build-mac    # macOS
+npm run build-linux  # Linux
 ```
 
-## 📱 Kullanım
+## 📊 Veri Güvenliği
 
-### İlk Kullanım
-1. Uygulamayı başlatın
-2. **F1** tuşu ile ilk müşterinizi ekleyin
-3. **F6** tuşu ile hızlı borç girişi yapın
-4. **F7** tuşu ile ödeme alın
+### Otomatik Yedekleme
+- Her migration öncesi otomatik yedek
+- Yedek dosyaları `backups/YYYYMMDD_HHmm/` formatında
+- Yedek bilgileri `backup-info.json` ile saklanır
 
-### Hızlı İşlemler
-- **Yeni Müşteri**: F1 tuşuna basın, bilgileri girin
-- **Borç Girişi**: F6 tuşuna basın, müşteri seçin, tutarı girin
-- **Ödeme Alma**: F7 tuşuna basın, müşteri seçin, tutarı girin
-- **Müşteri Arama**: F5 tuşuna basın, müşteri adı yazın
+### Migration Güvenliği
+- Migration öncesi otomatik yedek
+- Hata durumunda otomatik geri yükleme
+- Her adımda schema version güncelleme
+- Detaylı log kayıtları
 
-### Dashboard
-- Toplam müşteri sayısı
-- Toplam alacak tutarı
-- Günlük işlem sayısı
-- Son işlemler listesi
+### Rollback Sistemi
+- En son yedeği geri yükleme
+- Belirli yedekten geri yükleme
+- Schema version senkronizasyonu
 
-## 🗃️ Veritabanı
+## 🐛 Hata Ayıklama
 
-Uygulama SQLite veritabanı kullanır. Veriler `veresiye.db` dosyasında saklanır.
+### Log Dosyaları
+- `logs/app.log`: Ana log dosyası
+- Otomatik log rotation (10MB limit)
+- Detaylı migration ve backup logları
 
-### Tablolar:
-- **customers**: Müşteri bilgileri
-- **transactions**: İşlem kayıtları (borç/ödeme)
+### Geliştirici Araçları
+- F12 ile DevTools açma
+- Console logları
+- IPC mesaj takibi
 
-## 🎨 Özelleştirme
+## 📝 Lisans
 
-### Tema Değişikliği
-`styles.css` dosyasını düzenleyerek görünümü özelleştirebilirsiniz.
-
-### Yeni Kısayol Tuşları
-`main.js` dosyasındaki `registerGlobalShortcuts()` fonksiyonunu düzenleyin.
-
-## 📊 Ekran Görüntüleri
-
-### Dashboard
-- Modern kart tasarımı ile istatistikler
-- Son işlemler listesi
-- Renkli göstergeler
-
-### Müşteri Yönetimi
-- Kart görünümünde müşteri listesi
-- Detaylı müşteri bilgileri
-- İşlem geçmişi
-
-### Hızlı İşlemler
-- Modal pencereler ile hızlı giriş
-- Otomatik odaklanma
-- Form doğrulama
-
-## 🔒 Güvenlik
-
-- Yerel SQLite veritabanı
-- Veri şifreleme (isteğe bağlı)
-- Otomatik yedekleme özelliği
-
-## 🐛 Sorun Giderme
-
-### "Müşteri eklenirken hata oluştu" hatası
-Bu hata genellikle `better-sqlite3` modülünün Electron ile uyumlu olmadığı anlamına gelir:
-
-```bash
-# Çözüm 1: Electron-rebuild kullanın
-npm install --save-dev electron-rebuild
-npm run rebuild
-
-# Çözüm 2: Bağımlılıkları yeniden yükleyin
-rm -rf node_modules package-lock.json
-npm install
-npm run rebuild
-```
-
-### Uygulama açılmıyor
-1. Node.js versiyonunu kontrol edin (16+ gerekli)
-2. `npm install` komutunu tekrar çalıştırın
-3. Antivirus yazılımını kontrol edin
-4. Konsol çıktısını kontrol edin (Developer Tools - F12)
-
-### Veritabanı hatası
-1. Konsol çıktısında veritabanı yolunu kontrol edin
-2. Veritabanı dosyasının yazma izinleri olduğundan emin olun
-3. Son çare olarak `veresiye.db` dosyasını silin (veriler kaybolur)
-4. Uygulamayı yeniden başlatın
-
-### Kısayol tuşları çalışmıyor
-1. Uygulamanın odakta olduğundan emin olun
-2. Diğer uygulamaların aynı tuşları kullanmadığını kontrol edin
-3. macOS'ta sistem tercihlerinden klavye izinlerini kontrol edin
-
-## 📝 Değişiklik Günlüğü
-
-### v1.0.0
-- İlk sürüm
-- Temel müşteri yönetimi
-- Kısayol tuşları sistemi
-- Dashboard ve raporlama
-- SQLite veritabanı entegrasyonu
+MIT License - Detaylar için `LICENSE` dosyasına bakın.
 
 ## 🤝 Katkıda Bulunma
 
@@ -184,22 +170,27 @@ npm run rebuild
 4. Push yapın (`git push origin feature/amazing-feature`)
 5. Pull Request oluşturun
 
-## 📄 Lisans
+## 📞 İletişim
 
-Bu proje MIT lisansı altında lisanslanmıştır.
+- **Geliştirici**: Etic Ajans
+- **Repository**: https://github.com/ulaskutay/etic-ajans-veresiye-takip
+- **Versiyon**: 1.0.0
 
-## 👨‍💻 Geliştirici
+## 🔄 Changelog
 
-**Etic Ajans**
-- Email: info@eticajans.com
-- Website: https://eticajans.com
-
-## 📞 Destek
-
-Sorunlarınız için:
-- GitHub Issues kullanın
-- Email: support@eticajans.com
+### v1.0.0 (2024-01-15)
+- ✅ Temel veresiye takip sistemi
+- ✅ Kısayol tuşları desteği
+- ✅ Excel import/export
+- ✅ PDF raporlama
+- ✅ Uyarı sistemi
+- ✅ Veri güvenliği sistemi
+- ✅ Migration sistemi
+- ✅ Otomatik yedekleme
+- ✅ Log sistemi
+- ✅ Single instance lock
+- ✅ Content Security Policy
 
 ---
 
-⭐ Bu projeyi beğendiyseniz yıldız vermeyi unutmayın!
+**Not**: Bu uygulama production-ready durumda olup, veri güvenliği ve migration sistemi ile enterprise seviyede güvenilirlik sağlar.

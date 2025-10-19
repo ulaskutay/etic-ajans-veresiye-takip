@@ -206,7 +206,7 @@ async function showAddAlertForm() {
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                         <div>
                             <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Tip *</label>
-                            <select name="alert_type" required 
+                            <select name="alert_type" required onchange="updateAlertTypeFields()"
                                     style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
                                 <option value="">Seçin</option>
                                 <option value="stock">📦 Stok</option>
@@ -248,6 +248,24 @@ async function showAddAlertForm() {
                         </select>
                     </div>
                     
+                    <div id="product-selection" style="margin-bottom: 16px; display: none;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Ürün Seçimi *</label>
+                        <select name="target_id" 
+                                style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
+                            <option value="">Ürün seçin</option>
+                            <!-- Ürünler buraya yüklenecek -->
+                        </select>
+                    </div>
+                    
+                    <div id="category-selection" style="margin-bottom: 16px; display: none;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Kategori Seçimi *</label>
+                        <select name="target_id" 
+                                style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
+                            <option value="">Kategori seçin</option>
+                            <!-- Kategoriler buraya yüklenecek -->
+                        </select>
+                    </div>
+                    
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                         <div>
                             <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Koşul *</label>
@@ -285,19 +303,106 @@ async function showAddAlertForm() {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
+// Uyarı türüne göre hedef seçeneklerini güncelle
+function updateAlertTypeFields() {
+    const alertType = document.querySelector('select[name="alert_type"]').value;
+    const targetTypeSelect = document.querySelector('select[name="target_type"]');
+    
+    // Mevcut seçimi temizle
+    targetTypeSelect.innerHTML = '<option value="">Seçin</option>';
+    
+    if (alertType === 'stock') {
+        // Stok uyarısı için ürün seçenekleri
+        targetTypeSelect.innerHTML += '<option value="all">🌐 Tüm Ürünler</option>';
+        targetTypeSelect.innerHTML += '<option value="product">📦 Ürün</option>';
+        targetTypeSelect.innerHTML += '<option value="category">📂 Kategori</option>';
+    } else if (alertType === 'debt') {
+        // Borç uyarısı için müşteri seçenekleri
+        targetTypeSelect.innerHTML += '<option value="all">🌐 Tüm Müşteriler</option>';
+        targetTypeSelect.innerHTML += '<option value="customer">👤 Müşteri</option>';
+    } else if (alertType === 'payment') {
+        // Ödeme uyarısı için müşteri seçenekleri
+        targetTypeSelect.innerHTML += '<option value="all">🌐 Tüm Müşteriler</option>';
+        targetTypeSelect.innerHTML += '<option value="customer">👤 Müşteri</option>';
+    }
+    
+    // Hedef seçimi değiştiğinde alanları güncelle
+    updateTargetFields();
+}
+
 // Hedef alanlarını güncelle
 function updateTargetFields() {
     const targetType = document.querySelector('select[name="target_type"]').value;
     const customerSelection = document.getElementById('customer-selection');
-    const targetIdSelect = document.querySelector('select[name="target_id"]');
+    const productSelection = document.getElementById('product-selection');
+    const categorySelection = document.getElementById('category-selection');
     
+    // Tüm seçim alanlarını gizle
+    customerSelection.style.display = 'none';
+    productSelection.style.display = 'none';
+    categorySelection.style.display = 'none';
+    
+    // Seçilen türe göre ilgili alanı göster
     if (targetType === 'customer') {
         customerSelection.style.display = 'block';
-        targetIdSelect.required = true;
+        customerSelection.querySelector('select[name="target_id"]').required = true;
+    } else if (targetType === 'product') {
+        productSelection.style.display = 'block';
+        productSelection.querySelector('select[name="target_id"]').required = true;
+        loadProducts(); // Ürünleri yükle
+    } else if (targetType === 'category') {
+        categorySelection.style.display = 'block';
+        categorySelection.querySelector('select[name="target_id"]').required = true;
+        loadCategories(); // Kategorileri yükle
     } else {
-        customerSelection.style.display = 'none';
-        targetIdSelect.required = false;
-        targetIdSelect.value = '';
+        // Tümü seçildiğinde hiçbir seçim alanı gerekli değil
+        const allSelects = document.querySelectorAll('select[name="target_id"]');
+        allSelects.forEach(select => {
+            select.required = false;
+            select.value = '';
+        });
+    }
+}
+
+// Ürünleri yükle
+async function loadProducts() {
+    try {
+        const products = await window.ipcRenderer.invoke('get-products');
+        const productSelect = document.querySelector('#product-selection select[name="target_id"]');
+        
+        // Mevcut seçenekleri temizle (ilk seçenek hariç)
+        productSelect.innerHTML = '<option value="">Ürün seçin</option>';
+        
+        // Ürünleri ekle
+        products.forEach(product => {
+            const option = document.createElement('option');
+            option.value = product.id;
+            option.textContent = `${product.name} (Stok: ${product.stock || 0})`;
+            productSelect.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Ürünler yüklenirken hata:', error);
+    }
+}
+
+// Kategorileri yükle
+async function loadCategories() {
+    try {
+        const categories = await window.ipcRenderer.invoke('get-categories');
+        const categorySelect = document.querySelector('#category-selection select[name="target_id"]');
+        
+        // Mevcut seçenekleri temizle (ilk seçenek hariç)
+        categorySelect.innerHTML = '<option value="">Kategori seçin</option>';
+        
+        // Kategorileri ekle
+        categories.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category.id;
+            option.textContent = `${category.icon || '📦'} ${category.name}`;
+            categorySelect.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Kategoriler yüklenirken hata:', error);
     }
 }
 
@@ -306,13 +411,25 @@ async function handleAddAlert(event) {
     event.preventDefault();
     
     const formData = new FormData(event.target);
+    const alertType = formData.get('alert_type');
+    
+    // Uyarı türüne göre condition_field belirle
+    let conditionField = 'balance'; // Varsayılan
+    if (alertType === 'stock') {
+        conditionField = 'stock';
+    } else if (alertType === 'debt') {
+        conditionField = 'balance';
+    } else if (alertType === 'payment') {
+        conditionField = 'amount';
+    }
+    
     const alertData = {
         name: formData.get('name'),
         description: formData.get('description'),
-        alert_type: formData.get('alert_type'),
+        alert_type: alertType,
         condition_type: formData.get('condition_type'),
         condition_value: formData.get('condition_value'),
-        condition_field: 'balance', // Borç için balance kullan
+        condition_field: conditionField,
         target_type: formData.get('target_type'),
         target_id: formData.get('target_id') || null,
         priority: formData.get('priority'),
