@@ -1351,8 +1351,8 @@ function setupIpcHandlers() {
             // Şimdilik lokal version kontrolü yapıyoruz
             // Gerçek uygulamada GitHub API veya başka bir update server kullanılabilir
             
-            const currentVersion = '1.1.0';
-            const latestVersion = '1.1.0'; // Yeni version
+            const currentVersion = '1.2.1';
+            const latestVersion = '1.2.1'; // Yeni version
             
             // Simüle edilmiş güncelleme kontrolü
             const hasUpdate = false; // Şimdilik güncelleme yok

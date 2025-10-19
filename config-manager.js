@@ -26,7 +26,7 @@ class ConfigManager {
                 // Varsayılan config oluştur
                 this.config = {
                     schemaVersion: 0,
-                    appVersion: '1.1.0',
+                    appVersion: '1.2.1',
                     lastBackup: null,
                     lastMigration: null,
                     settings: {
@@ -44,7 +44,7 @@ class ConfigManager {
             // Hata durumunda varsayılan config
             this.config = {
                 schemaVersion: 0,
-                appVersion: '1.1.0',
+                appVersion: '1.2.1',
                 lastBackup: null,
                 lastMigration: null,
                 settings: {
