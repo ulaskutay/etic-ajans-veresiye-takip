@@ -74,10 +74,17 @@ function createModernProductModal() {
                                 ${products.length} Ürün · ${categories.length} Kategori · ${brands.length} Marka
                             </p>
                         </div>
-                        <button onclick="event.stopPropagation(); closeProductModal('product-management-modal')" 
-                                style="background: rgba(255,255,255,0.2); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 24px; transition: all 0.3s; z-index: 1001; position: relative;"
-                                onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
-                                onmouseout="this.style.background='rgba(255,255,255,0.2)'"
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <button onclick="showExcelImportModal()" 
+                                    style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.3s; display: flex; align-items: center; gap: 8px;"
+                                    onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
+                                    onmouseout="this.style.background='rgba(255,255,255,0.2)'" title="Excel ile Toplu Ürün Yükle">
+                                📊 Excel Import
+                            </button>
+                            <button onclick="event.stopPropagation(); closeProductModal('product-management-modal')" 
+                                    style="background: rgba(255,255,255,0.2); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 24px; transition: all 0.3s; z-index: 1001; position: relative;"
+                                    onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
+                                    onmouseout="this.style.background='rgba(255,255,255,0.2)'"
                                 title="Kapat">
                             ×
                         </button>
@@ -232,11 +239,22 @@ function handleProductModalKeydown(event) {
         const allModals = document.querySelectorAll('.modal.active');
         if (allModals.length === 0) return;
         
-        // En son eklenen (DOM'da en son olan) modal'ı al
-        const lastModal = allModals[allModals.length - 1];
-        const modalId = lastModal.id;
+        // Z-index'e göre en üstteki modal'ı bul
+        let topModal = null;
+        let topZIndex = -1;
         
-        console.log(`ESC ile modal kapatılıyor: ${modalId}`);
+        allModals.forEach(modal => {
+            const zIndex = parseInt(window.getComputedStyle(modal).zIndex) || 0;
+            if (zIndex > topZIndex) {
+                topZIndex = zIndex;
+                topModal = modal;
+            }
+        });
+        
+        if (!topModal) return;
+        
+        const modalId = topModal.id;
+        console.log(`ESC ile modal kapatılıyor: ${modalId} (z-index: ${topZIndex})`);
         
         // Alt modalları kontrol et (kategori, marka, ürün ekleme, vs.)
         const subModals = ['categories-modal', 'brands-modal', 'add-product-modal', 'edit-product-modal', 'add-category-modal', 'add-brand-modal', 'edit-category-modal', 'edit-brand-modal', 'quick-add-category-from-product-modal', 'quick-add-brand-from-product-modal'];
@@ -872,7 +890,78 @@ async function deleteCategory(id) {
 }
 
 function editCategory(id) {
-    showNotification('Kategori düzenleme özelliği yakında eklenecek', 'info');
+    const category = categories.find(c => c.id === id);
+    if (!category) return;
+    
+    const modalHtml = `
+        <div id="edit-category-modal" class="modal active" style="z-index: 9999;">
+            <div class="modal-content" style="max-width: 400px;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 16px; border-radius: 12px 12px 0 0; color: white; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Kategori Düzenle</h3>
+                    <button onclick="event.stopPropagation(); closeProductModal('edit-category-modal')" 
+                            style="background: rgba(255,255,255,0.2); border: none; color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 18px;">
+                        ×
+                    </button>
+                </div>
+                
+                <form id="edit-category-form" onsubmit="handleEditCategory(event)" style="padding: 20px;">
+                    <input type="hidden" name="id" value="${category.id}">
+                    
+                    <div style="margin-bottom: 16px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Kategori Adı *</label>
+                        <input type="text" id="edit-category-name" name="name" value="${category.name}" required 
+                               style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                               onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                        <button type="button" onclick="closeProductModal('edit-category-modal')" 
+                                style="padding: 12px 24px; background: #f3f4f6; color: #374151; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                            İptal
+                        </button>
+                        <button type="submit" 
+                                style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                            Güncelle
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    document.getElementById('edit-category-name').focus();
+}
+
+async function handleEditCategory(event) {
+    event.preventDefault();
+    
+    const formData = new FormData(event.target);
+    const categoryData = {
+        id: parseInt(formData.get('id')),
+        name: formData.get('name').trim()
+    };
+    
+    if (!categoryData.name) {
+        showNotification('Kategori adı zorunludur', 'error');
+        return;
+    }
+    
+    try {
+        await ipcRenderer.invoke('update-category', categoryData);
+        await loadCategories();
+        
+        closeProductModal('edit-category-modal');
+        showNotification('Kategori başarıyla güncellendi', 'success');
+        
+        // Kategori modalını yenile
+        closeProductModal('categories-modal');
+        showCategoriesModal();
+        
+    } catch (error) {
+        console.error('Kategori güncellenirken hata:', error);
+        showNotification('Kategori güncellenirken hata oluştu', 'error');
+    }
 }
 
 // Marka işlemleri

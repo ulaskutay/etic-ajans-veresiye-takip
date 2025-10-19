@@ -557,6 +557,20 @@ function setupIpcHandlers() {
             return [];
         }
     });
+
+    ipcMain.handle('get-product-by-barcode', (event, barcode) => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+            if (!barcode) return null;
+            const stmt = db.prepare('SELECT * FROM products WHERE barcode = ? AND is_active = 1');
+            return stmt.get(barcode);
+        } catch (error) {
+            console.error('Ürün barkod ile getirilirken hata:', error);
+            throw error;
+        }
+    });
     
     ipcMain.handle('get-categories', () => {
         try {

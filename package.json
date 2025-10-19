@@ -55,6 +55,7 @@
     "sqlite3": "^5.1.7"
   },
   "dependencies": {
-    "better-sqlite3": "^12.4.1"
+    "better-sqlite3": "^12.4.1",
+    "xlsx": "^0.18.5"
   }
 }
