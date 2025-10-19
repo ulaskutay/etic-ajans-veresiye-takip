@@ -540,6 +540,12 @@ async function deleteProduct(productId) {
         await ipcRenderer.invoke('delete-product', productId);
         await loadProductData();
         updateProductDisplay();
+        
+        // Satış ekranındaki ürün seçimini güncelle (silinen ürünü kaldır)
+        if (typeof updateSaleProductSelectAfterDelete === 'function') {
+            updateSaleProductSelectAfterDelete(productId);
+        }
+        
         showNotification('Ürün başarıyla silindi', 'success');
     } catch (error) {
         console.error('Ürün silme hatası:', error);

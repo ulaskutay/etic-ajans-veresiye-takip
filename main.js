@@ -198,7 +198,7 @@ function createWindow() {
     });
 
     // Console'u aç (development için)
-    // mainWindow.webContents.openDevTools();
+    mainWindow.webContents.openDevTools();
     console.log('🔧 Application started');
 
     // Menü oluştur
@@ -452,6 +452,12 @@ function setupIpcHandlers() {
             
             const { id, customer_id, type, created_at, description, product_id, quantity, unit_price, total_amount } = transactionData;
             
+            // Validation
+            if (!id || !customer_id || !type || !created_at) {
+                console.error('Missing required fields:', { id, customer_id, type, created_at });
+                return { success: false, error: 'Missing required fields' };
+            }
+            
             const result = db.prepare(`
                 UPDATE transactions 
                 SET customer_id = ?, type = ?, created_at = ?, description = ?, 
@@ -460,7 +466,14 @@ function setupIpcHandlers() {
             `).run(customer_id, type, created_at, description, product_id, quantity, unit_price, total_amount, id);
             
             console.log('Transaction update result:', result);
-            return { success: result.changes > 0 };
+            console.log('Changes made:', result.changes);
+            
+            if (result.changes === 0) {
+                console.error('No rows were updated - transaction might not exist');
+                return { success: false, error: 'Transaction not found or no changes made' };
+            }
+            
+            return { success: true, changes: result.changes };
         } catch (error) {
             console.error('Error updating transaction:', error);
             return { success: false, error: error.message };

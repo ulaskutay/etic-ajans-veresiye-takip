@@ -414,16 +414,21 @@ function clearCustomerDetails() {
 }
 
 // Load transactions
-async function loadTransactions(customerId) {
+async function loadTransactions(customerId, preserveSelection = false) {
     try {
+        console.log('Loading transactions for customer:', customerId, 'preserveSelection:', preserveSelection);
+        
         const transactions = await ipcRenderer.invoke('get-transactions', customerId);
+        console.log('Loaded transactions:', transactions.length);
         
         // Separate sales and purchases
         sales = transactions.filter(t => t.type === 'debt');
         purchases = transactions.filter(t => t.type === 'payment');
         
+        console.log('Sales:', sales.length, 'Purchases:', purchases.length);
+        
         // Tek tabloda birleştirilmiş işlemleri göster
-        displayAllTransactions();
+        displayAllTransactions(preserveSelection);
         
         // Calculate totals
         const totalSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
@@ -446,6 +451,8 @@ async function loadTransactions(customerId) {
             document.getElementById('last-payment-date').textContent = formatDate(lastPurchase.created_at);
         }
         
+        console.log('Transactions loaded successfully');
+        
     } catch (error) {
         console.error('İşlemler yüklenirken hata:', error);
         showNotification('İşlemler yüklenirken hata oluştu', 'error');
@@ -453,11 +460,24 @@ async function loadTransactions(customerId) {
 }
 
 // Display all transactions in a single table
-function displayAllTransactions() {
+function displayAllTransactions(preserveSelection = false) {
     const salesTbody = document.getElementById('sales-table-body');
     
     // Hide filter totals when showing all transactions
     hideFilterTotals();
+    
+    // Mevcut seçili satırı kaydet
+    let selectedTransactionId = null;
+    let selectedTransactionType = null;
+    
+    if (preserveSelection) {
+        const selectedRow = salesTbody.querySelector('tr.selected');
+        if (selectedRow) {
+            selectedTransactionId = selectedRow.getAttribute('data-transaction-id');
+            selectedTransactionType = selectedRow.getAttribute('data-transaction-type');
+            console.log('Preserving selection:', selectedTransactionId, selectedTransactionType);
+        }
+    }
     
     // Tüm işlemleri birleştir ve tarihe göre ters sırala (en son işlem en başta)
     const allTransactions = [
@@ -540,9 +560,21 @@ function displayAllTransactions() {
                 </td>
                 <td class="${cumulativeBalance > 0 ? 'negative' : cumulativeBalance < 0 ? 'positive' : 'neutral'}">
                     ${formatMoney(cumulativeBalance)}
+                </td>
             </tr>
         `;
     }).join('');
+    
+    // Seçili satırı geri yükle
+    if (preserveSelection && selectedTransactionId) {
+        const rowToSelect = salesTbody.querySelector(`tr[data-transaction-id="${selectedTransactionId}"]`);
+        if (rowToSelect) {
+            rowToSelect.classList.add('selected');
+            console.log('Selection restored:', selectedTransactionId);
+        } else {
+            console.warn('Could not restore selection for transaction:', selectedTransactionId);
+        }
+    }
 }
 
 // Display filtered transactions in the single table
@@ -714,7 +746,7 @@ async function editSale() {
     }
     
     console.log('Getting selected transaction...');
-    const selectedSale = getSelectedTransaction(); // Parametre kaldırıldı
+    const selectedSale = getSelectedTransaction('sale'); // Sadece sale işlemlerini al
     console.log('selectedSale result:', selectedSale);
     
     if (!selectedSale) {
@@ -734,9 +766,10 @@ async function editSale() {
         document.getElementById('edit-sale-customer').value = currentCustomer.name;
         document.getElementById('edit-sale-customer').readOnly = true;
         
-        console.log('Setting date to:', selectedSale.date);
-        const dateValue = selectedSale.date ? selectedSale.date.split('T')[0] : new Date().toISOString().split('T')[0];
-        document.getElementById('edit-sale-date').value = dateValue;
+        // Tarihi otomatik olarak bugünün tarihi yap
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('edit-sale-date').value = today;
+        console.log('Date set to today:', today);
         
         console.log('Setting amount to:', selectedSale.total_amount || selectedSale.amount);
         document.getElementById('edit-sale-amount').value = selectedSale.total_amount || selectedSale.amount;
@@ -751,7 +784,7 @@ async function editSale() {
         if (selectedSale.product_id) {
             console.log('Setting product to:', selectedSale.product_id);
             document.getElementById('edit-sale-product').value = selectedSale.product_id;
-            handleEditProductSelection();
+            await handleEditProductSelection();
         }
         
         console.log('Showing modal...');
@@ -765,7 +798,7 @@ async function editSale() {
 }
 
 // Delete Sale Transaction
-function deleteSale() {
+async function deleteSale() {
     console.log('=== DELETE SALE FUNCTION CALLED ===');
     
     if (!currentCustomer) {
@@ -773,14 +806,59 @@ function deleteSale() {
         return;
     }
     
-    const selectedSale = getSelectedTransaction(); // Parametre kaldırıldı
-    if (!selectedSale) {
+    // Seçili satırı kontrol et
+    const selectedRow = document.querySelector('#sales-table-body tr.selected');
+    if (!selectedRow) {
         showNotification('Lütfen silmek istediğiniz satış işlemini seçin', 'warning');
         return;
     }
     
+    const transactionType = selectedRow.getAttribute('data-transaction-type');
+    const transactionId = selectedRow.getAttribute('data-transaction-id');
+    
+    // Sadece satış işlemlerini işle
+    if (transactionType !== 'sale') {
+        showNotification('Bu bir satış işlemi değil', 'warning');
+        return;
+    }
+    
+    // Satış işlemini bul (önce sales array'inde, sonra allTransactions'da)
+    let selectedSale = sales.find(s => s.id == transactionId);
+    if (!selectedSale) {
+        // Tüm işlemler kısmından seçildiyse, sales array'ini yeniden yükle
+        selectedSale = sales.find(s => s.id == transactionId);
+    }
+    
+    if (!selectedSale) {
+        showNotification('Satış işlemi bulunamadı', 'error');
+        return;
+    }
+    
     if (confirm(`"${selectedSale.description || 'Satış'}" işlemini silmek istediğinizden emin misiniz?`)) {
-        deleteTransaction(selectedSale.id);
+        // Doğrudan silme işlemini yap
+        try {
+            const result = await ipcRenderer.invoke('delete-transaction', selectedSale.id);
+            
+            if (result.success) {
+                showNotification('Satış işlemi başarıyla silindi', 'success');
+                
+                // Store current customer ID before reloading
+                const storedCustomerId = currentCustomer ? currentCustomer.id : null;
+                
+                // Reload customers to update balances (don't clear selection)
+                await loadCustomers(false);
+                
+                // Re-select the customer to keep it active
+                if (storedCustomerId) {
+                    await selectCustomer(storedCustomerId);
+                }
+            } else {
+                showNotification('Satış işlemi silinirken hata oluştu', 'error');
+            }
+        } catch (error) {
+            console.error('Satış işlemi silinirken hata:', error);
+            showNotification('Satış işlemi silinirken hata oluştu', 'error');
+        }
     }
 }
 
@@ -797,7 +875,7 @@ async function editPurchase() {
     }
     
     console.log('Getting selected purchase transaction...');
-    const selectedPurchase = getSelectedTransaction(); // Parametre kaldırıldı
+    const selectedPurchase = getSelectedTransaction('purchase'); // Sadece purchase işlemlerini al
     console.log('selectedPurchase result:', selectedPurchase);
     
     if (!selectedPurchase) {
@@ -846,7 +924,7 @@ function deletePurchase() {
         return;
     }
     
-    const selectedPurchase = getSelectedTransaction(); // Parametre kaldırıldı
+    const selectedPurchase = getSelectedTransaction('purchase'); // Sadece purchase işlemlerini al
     if (!selectedPurchase) {
         showNotification('Lütfen silmek istediğiniz tahsilat işlemini seçin', 'warning');
         return;
@@ -858,8 +936,8 @@ function deletePurchase() {
 }
 
 // Get selected transaction from table
-function getSelectedTransaction() {
-    console.log('getSelectedTransaction called');
+function getSelectedTransaction(transactionType = null) {
+    console.log('getSelectedTransaction called with type:', transactionType);
     
     // Artık tek tablo var, sales-table-body kullanıyoruz
     const tableBody = document.getElementById('sales-table-body');
@@ -878,17 +956,28 @@ function getSelectedTransaction() {
     console.log('transactionId:', transactionId);
     
     // Get transaction type from data attribute
-    const transactionType = selectedRow.getAttribute('data-transaction-type');
-    console.log('transactionType:', transactionType);
+    const rowTransactionType = selectedRow.getAttribute('data-transaction-type');
+    console.log('rowTransactionType:', rowTransactionType);
     
-    // Find transaction in the appropriate array based on transaction type
-    const transactions = transactionType === 'sale' ? sales : purchases;
-    console.log('transactions array:', transactions);
+    // If transactionType is specified, check if it matches
+    if (transactionType && rowTransactionType !== transactionType) {
+        console.log('Transaction type mismatch. Expected:', transactionType, 'Found:', rowTransactionType);
+        return null;
+    }
     
-    const foundTransaction = transactions.find(t => t.id == transactionId);
-    console.log('foundTransaction:', foundTransaction);
+    // Find transaction in the appropriate array
+    if (rowTransactionType === 'sale') {
+        const foundTransaction = sales.find(t => t.id == transactionId);
+        console.log('Found in sales array:', foundTransaction);
+        return foundTransaction;
+    } else if (rowTransactionType === 'purchase') {
+        const foundTransaction = purchases.find(t => t.id == transactionId);
+        console.log('Found in purchases array:', foundTransaction);
+        return foundTransaction;
+    }
     
-    return foundTransaction;
+    console.log('Unknown transaction type:', rowTransactionType);
+    return null;
 }
 
 // Delete transaction (generic function)
@@ -918,46 +1007,106 @@ async function deleteTransaction(transactionId) {
     }
 }
 
+// Delete transaction by ID (alias for deleteTransaction to avoid confusion)
+async function deleteTransactionById(transactionId) {
+    return deleteTransaction(transactionId);
+}
+
 // Handle edit sale form submission
 async function handleEditSale(e) {
     e.preventDefault();
     
+    console.log('=== HANDLE EDIT SALE CALLED ===');
+    
     const formData = new FormData(e.target);
+    const transactionId = formData.get('id');
+    const amount = parseFloat(formData.get('amount'));
+    const description = formData.get('description') || 'Satış';
+    const productId = formData.get('product_id') || null;
+    const date = formData.get('date');
+    
+    console.log('Form data:', {
+        id: transactionId,
+        amount: amount,
+        description: description,
+        productId: productId,
+        date: date
+    });
+    
+    // Validation
+    if (!transactionId) {
+        showNotification('İşlem ID bulunamadı', 'error');
+        return;
+    }
+    
+    if (!amount || amount <= 0) {
+        showNotification('Geçerli bir tutar girin', 'error');
+        return;
+    }
+    
+    if (!currentCustomer) {
+        showNotification('Müşteri bilgisi bulunamadı', 'error');
+        return;
+    }
+    
+    // Date formatını düzenle
+    const formattedDate = date ? new Date(date).toISOString() : new Date().toISOString();
+    
     const transactionData = {
-        id: formData.get('id'),
+        id: parseInt(transactionId),
         customer_id: currentCustomer.id,
-        type: 'sale',
-        created_at: formData.get('date'),
-        description: formData.get('description') || 'Satış',
-        product_id: formData.get('product_id') || null,
+        type: 'debt',
+        created_at: formattedDate,
+        description: description,
+        product_id: productId ? parseInt(productId) : null,
         quantity: 1,
-        unit_price: parseFloat(formData.get('amount')),
-        total_amount: parseFloat(formData.get('amount'))
+        unit_price: amount,
+        total_amount: amount
     };
+    
+    console.log('Sending transaction data:', transactionData);
     
     try {
         const result = await ipcRenderer.invoke('update-transaction', transactionData);
+        console.log('Update result:', result);
         
         if (result.success) {
             showNotification('Satış başarıyla güncellendi', 'success');
+            
+            // Modal'ı kapat
             closeModal('edit-sale-modal');
             
-            // Store current customer ID before reloading
-            const storedCustomerId = currentCustomer ? currentCustomer.id : null;
+            // Sadece o satırı güncelle, tabloyu yeniden yükleme
+            console.log('Update completed - updating row in place');
             
-            // Reload customers to update balances (don't clear selection)
-            await loadCustomers(false);
-            
-            // Re-select the customer to keep it active
-            if (storedCustomerId) {
-                await selectCustomer(storedCustomerId);
+            // Seçili satırı bul ve güncelle
+            const selectedRow = document.querySelector('#sales-table-body tr.selected');
+            if (selectedRow) {
+                const transactionId = selectedRow.getAttribute('data-transaction-id');
+                
+                // Satır içeriğini güncelle
+                const cells = selectedRow.querySelectorAll('td');
+                if (cells.length >= 6) {
+                    // Tarih güncelle (ilk 3 hücre: gün, ay, yıl)
+                    const today = new Date();
+                    cells[0].textContent = today.getDate();
+                    cells[1].textContent = today.getMonth() + 1;
+                    cells[2].textContent = today.getFullYear();
+                    
+                    // Açıklama güncelle (5. hücre)
+                    cells[4].textContent = description;
+                    
+                    console.log('Row updated in place:', transactionId);
+                }
             }
+            
         } else {
-            showNotification('Satış güncellenirken hata oluştu', 'error');
+            console.error('Update failed:', result);
+            showNotification('Satış güncellenirken hata oluştu: ' + (result.error || 'Bilinmeyen hata'), 'error');
         }
     } catch (error) {
         console.error('Satış güncellenirken hata:', error);
-        showNotification('Satış güncellenirken hata oluştu', 'error');
+        showNotification('Satış güncellenirken hata oluştu: ' + error.message, 'error');
     }
 }
 
@@ -969,7 +1118,7 @@ async function handleEditPurchase(e) {
     const transactionData = {
         id: formData.get('id'),
         customer_id: currentCustomer.id,
-        type: 'purchase',
+        type: 'payment', // purchases array contains transactions with type === 'payment'
         created_at: formData.get('date'),
         description: formData.get('description') || 'Tahsilat',
         quantity: 1,
@@ -1027,13 +1176,30 @@ async function loadProductsForSelect(selectId) {
 }
 
 // Handle edit product selection
-function handleEditProductSelection() {
+async function handleEditProductSelection() {
     const productId = document.getElementById('edit-sale-product').value;
-    const product = products.find(p => p.id == productId);
     
-    if (product) {
-        document.getElementById('edit-sale-amount').value = product.sale_price;
-        document.getElementById('edit-sale-description').value = product.name;
+    if (!productId) {
+        // Ürün seçimi temizlendiyse, alanları temizle
+        document.getElementById('edit-sale-amount').value = '';
+        document.getElementById('edit-sale-description').value = '';
+        return;
+    }
+    
+    try {
+        // Tüm ürünleri yeniden yükle
+        const allProducts = await ipcRenderer.invoke('get-products');
+        const product = allProducts.find(p => p.id == productId);
+        
+        if (product) {
+            document.getElementById('edit-sale-amount').value = product.sale_price;
+            document.getElementById('edit-sale-description').value = product.name;
+            console.log('Ürün bilgileri güncellendi:', product.name, product.sale_price);
+        } else {
+            console.warn('Ürün bulunamadı:', productId);
+        }
+    } catch (error) {
+        console.error('Ürün bilgisi yüklenirken hata:', error);
     }
 }
 
@@ -1292,6 +1458,7 @@ function showAddCustomerModal() {
 function showModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
+        modal.style.display = 'block';
         modal.classList.add('active');
         console.log(`Modal ${modalId} shown`);
     } else {
@@ -1302,10 +1469,9 @@ function showModal(modalId) {
 function closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
+        modal.style.display = 'none';
         modal.classList.remove('active');
-        // Modal'ı DOM'dan kaldırma - sadece gizle
-        // Bu sayede modal'lar tekrar açılabilir
-        console.log(`Modal ${modalId} closed (hidden, not removed from DOM)`);
+        console.log(`Modal ${modalId} closed`);
     }
 }
 
@@ -1684,7 +1850,7 @@ async function editTransaction() {
     }
 }
 
-function deleteTransaction() {
+async function deleteTransaction() {
     console.log('=== DELETE TRANSACTION FUNCTION CALLED ===');
     
     if (!currentCustomer) {
@@ -1707,10 +1873,17 @@ function deleteTransaction() {
     console.log('transactionType:', transactionType);
     console.log('transactionId:', transactionId);
     
+    if (!transactionType || !transactionId) {
+        showNotification('İşlem bilgileri bulunamadı', 'error');
+        return;
+    }
+    
     if (transactionType === 'sale') {
-        deleteSale();
+        await deleteSale();
     } else if (transactionType === 'purchase') {
-        deletePurchase();
+        await deletePurchase();
+    } else {
+        showNotification('Bilinmeyen işlem türü', 'error');
     }
 }
 
@@ -4036,6 +4209,11 @@ async function deleteProduct(productId) {
         await ipcRenderer.invoke('delete-product', productId);
         showNotification('✅ Ürün başarıyla silindi', 'success');
         
+        // Satış ekranındaki ürün seçimini güncelle (silinen ürünü kaldır)
+        if (typeof updateSaleProductSelectAfterDelete === 'function') {
+            updateSaleProductSelectAfterDelete(productId);
+        }
+        
         // Ürün yönetimi modal'ını yenile
         closeModal('product-management-modal');
         setTimeout(() => showProductManagement(), 100);
@@ -5280,6 +5458,160 @@ function showTransactionReportModal(allTransactions) {
     `;
     
     showOrCreateModal('transaction-report-modal', modalHtml);
+    
+    // Global değişkene kaydet
+    window.currentTransactionReport = allTransactions;
+}
+
+// İşlem detay raporunu yazdır
+function printTransactionReport() {
+    try {
+        const transactions = window.currentTransactionReport;
+        if (!transactions || transactions.length === 0) {
+            showNotification('Yazdırılacak veri bulunamadı', 'error');
+            return;
+        }
+        
+        // Yazdırma için HTML oluştur
+        const printContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>İşlem Detay Raporu</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .header h1 { color: #2d3748; margin-bottom: 10px; }
+                    .header p { color: #718096; margin: 0; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { padding: 12px; text-align: left; border: 1px solid #ddd; }
+                    th { background-color: #f7fafc; font-weight: bold; }
+                    .type-debt { background-color: #e53e3e; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+                    .type-payment { background-color: #38a169; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+                    .debt-amount { color: #e53e3e; font-weight: bold; }
+                    .payment-amount { color: #38a169; font-weight: bold; }
+                    .summary { margin-top: 30px; padding: 20px; background-color: #f7fafc; border-radius: 8px; }
+                    .summary h3 { margin-top: 0; color: #2d3748; }
+                    @media print {
+                        body { margin: 0; }
+                        .no-print { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>📋 İşlem Detay Raporu</h1>
+                    <p>Tarih: ${new Date().toLocaleDateString('tr-TR')}</p>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tarih</th>
+                            <th>Müşteri</th>
+                            <th>Ürün</th>
+                            <th style="text-align: center;">Tip</th>
+                            <th style="text-align: right;">Miktar</th>
+                            <th style="text-align: right;">Birim Fiyat</th>
+                            <th style="text-align: right;">Toplam</th>
+                            <th>Açıklama</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${transactions.map(transaction => `
+                            <tr>
+                                <td>${new Date(transaction.created_at).toLocaleDateString('tr-TR')}</td>
+                                <td style="font-weight: 500;">${transaction.customer_name || 'Bilinmiyor'}</td>
+                                <td>${transaction.product_name || '-'}</td>
+                                <td style="text-align: center;">
+                                    <span class="type-${transaction.type}">
+                                        ${transaction.type === 'debt' ? 'Borç' : 'Ödeme'}
+                                    </span>
+                                </td>
+                                <td style="text-align: right;">${transaction.quantity || 1}</td>
+                                <td style="text-align: right;">${formatMoney(transaction.unit_price)}</td>
+                                <td style="text-align: right;" class="${transaction.type === 'debt' ? 'debt-amount' : 'payment-amount'}">${formatMoney(transaction.total_amount)}</td>
+                                <td>${transaction.description || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                
+                <div class="summary">
+                    <h3>📊 Özet</h3>
+                    <p><strong>Toplam İşlem:</strong> ${transactions.length}</p>
+                    <p><strong>Toplam Borç:</strong> ${formatMoney(transactions.filter(t => t.type === 'debt').reduce((sum, t) => sum + t.total_amount, 0))}</p>
+                    <p><strong>Toplam Ödeme:</strong> ${formatMoney(transactions.filter(t => t.type === 'payment').reduce((sum, t) => sum + t.total_amount, 0))}</p>
+                    <p><strong>Net Bakiye:</strong> ${formatMoney(transactions.filter(t => t.type === 'debt').reduce((sum, t) => sum + t.total_amount, 0) - transactions.filter(t => t.type === 'payment').reduce((sum, t) => sum + t.total_amount, 0))}</p>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        // Yeni pencere aç ve yazdır
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(printContent);
+        printWindow.document.close();
+        
+        // Yazdırma dialogunu aç
+        setTimeout(() => {
+            printWindow.print();
+        }, 500);
+        
+        showNotification('İşlem detay raporu yazdırma için hazırlandı', 'success');
+        
+    } catch (error) {
+        console.error('İşlem detay raporu yazdırma hatası:', error);
+        showNotification('Yazdırma sırasında hata oluştu', 'error');
+    }
+}
+
+// İşlem detay raporunu Excel'e aktar
+function exportTransactionReportToExcel() {
+    try {
+        const transactions = window.currentTransactionReport;
+        if (!transactions || transactions.length === 0) {
+            showNotification('Aktarılacak veri bulunamadı', 'error');
+            return;
+        }
+        
+        // Excel verisi hazırla
+        const excelData = transactions.map(transaction => ({
+            'Tarih': new Date(transaction.created_at).toLocaleDateString('tr-TR'),
+            'Müşteri': transaction.customer_name || 'Bilinmiyor',
+            'Ürün': transaction.product_name || '-',
+            'Tip': transaction.type === 'debt' ? 'Borç' : 'Ödeme',
+            'Miktar': transaction.quantity || 1,
+            'Birim Fiyat': transaction.unit_price,
+            'Toplam': transaction.total_amount,
+            'Açıklama': transaction.description || '-'
+        }));
+        
+        // XLSX kütüphanesi kullanarak Excel dosyası oluştur
+        const ws = XLSX.utils.json_to_sheet(excelData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'İşlem Detay Raporu');
+        
+        // Dosyayı indir
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbout], { type: 'application/octet-stream' });
+        
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `islem_detay_raporu_${new Date().toISOString().split('T')[0]}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        showNotification('İşlem detay raporu Excel dosyası olarak indirildi', 'success');
+        
+    } catch (error) {
+        console.error('Excel aktarım hatası:', error);
+        showNotification('Excel aktarımı sırasında hata oluştu', 'error');
+    }
 }
 
 function showDebtAnalysisModal(debtAnalysis) {
@@ -5296,7 +5628,7 @@ function showDebtAnalysisModal(debtAnalysis) {
                         <button class="btn btn-secondary" onclick="printDebtAnalysis()">🖨️ Yazdır</button>
                     </div>
                     
-                    <div style="overflow-x: auto;">
+                    <div id="debt-analysis-content" style="overflow-x: auto;">
                         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                             <thead>
                                 <tr style="background: #f7fafc; border-bottom: 2px solid #e2e8f0;">
@@ -5330,6 +5662,155 @@ function showDebtAnalysisModal(debtAnalysis) {
     `;
     
     showOrCreateModal('debt-analysis-modal', modalHtml);
+    
+    // Global değişkene kaydet
+    window.currentDebtAnalysis = debtAnalysis;
+}
+
+// Borç analiz raporunu yazdır
+function printDebtAnalysis() {
+    try {
+        const debtAnalysis = window.currentDebtAnalysis;
+        if (!debtAnalysis || debtAnalysis.length === 0) {
+            showNotification('Yazdırılacak veri bulunamadı', 'error');
+            return;
+        }
+        
+        // Yazdırma için HTML oluştur
+        const printContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Borç Analiz Raporu</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .header h1 { color: #2d3748; margin-bottom: 10px; }
+                    .header p { color: #718096; margin: 0; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { padding: 12px; text-align: left; border: 1px solid #ddd; }
+                    th { background-color: #f7fafc; font-weight: bold; }
+                    .risk-high { background-color: #e53e3e; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+                    .risk-medium { background-color: #ed8936; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+                    .risk-low { background-color: #38a169; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+                    .debt-amount { color: #e53e3e; font-weight: bold; }
+                    .summary { margin-top: 30px; padding: 20px; background-color: #f7fafc; border-radius: 8px; }
+                    .summary h3 { margin-top: 0; color: #2d3748; }
+                    @media print {
+                        body { margin: 0; }
+                        .no-print { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>💳 Borç Analiz Raporu</h1>
+                    <p>Tarih: ${new Date().toLocaleDateString('tr-TR')}</p>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Müşteri</th>
+                            <th style="text-align: right;">Borç Miktarı</th>
+                            <th style="text-align: center;">Risk Seviyesi</th>
+                            <th style="text-align: center;">Son Ödeme</th>
+                            <th style="text-align: center;">Tahsilat Oranı</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${debtAnalysis.map(customer => `
+                            <tr>
+                                <td style="font-weight: 500;">${customer.name}</td>
+                                <td style="text-align: right;" class="debt-amount">${formatMoney(customer.netBalance)}</td>
+                                <td style="text-align: center;">
+                                    <span class="risk-${customer.riskLevel === 'Yüksek' ? 'high' : customer.riskLevel === 'Orta' ? 'medium' : 'low'}">
+                                        ${customer.riskLevel}
+                                    </span>
+                                </td>
+                                <td style="text-align: center;">${customer.daysSinceLastPayment ? customer.daysSinceLastPayment + ' gün önce' : 'Hiç ödeme yok'}</td>
+                                <td style="text-align: center;">${customer.paymentRate.toFixed(1)}%</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                
+                <div class="summary">
+                    <h3>📊 Özet</h3>
+                    <p><strong>Toplam Borç:</strong> ${formatMoney(debtAnalysis.reduce((sum, c) => sum + c.netBalance, 0))}</p>
+                    <p><strong>Müşteri Sayısı:</strong> ${debtAnalysis.length}</p>
+                    <p><strong>Ortalama Borç:</strong> ${formatMoney(debtAnalysis.reduce((sum, c) => sum + c.netBalance, 0) / debtAnalysis.length)}</p>
+                    <p><strong>Yüksek Riskli Müşteri:</strong> ${debtAnalysis.filter(c => c.riskLevel === 'Yüksek').length}</p>
+                    <p><strong>Orta Riskli Müşteri:</strong> ${debtAnalysis.filter(c => c.riskLevel === 'Orta').length}</p>
+                    <p><strong>Düşük Riskli Müşteri:</strong> ${debtAnalysis.filter(c => c.riskLevel === 'Düşük').length}</p>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        // Yeni pencere aç ve yazdır
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(printContent);
+        printWindow.document.close();
+        
+        // Yazdırma dialogunu aç
+        setTimeout(() => {
+            printWindow.print();
+        }, 500);
+        
+        showNotification('Borç analiz raporu yazdırma için hazırlandı', 'success');
+        
+    } catch (error) {
+        console.error('Borç analiz raporu yazdırma hatası:', error);
+        showNotification('Yazdırma sırasında hata oluştu', 'error');
+    }
+}
+
+// Borç analiz raporunu Excel'e aktar
+function exportDebtAnalysisToExcel() {
+    try {
+        const debtAnalysis = window.currentDebtAnalysis;
+        if (!debtAnalysis || debtAnalysis.length === 0) {
+            showNotification('Aktarılacak veri bulunamadı', 'error');
+            return;
+        }
+        
+        // Excel verisi hazırla
+        const excelData = debtAnalysis.map(customer => ({
+            'Müşteri': customer.name,
+            'Borç Miktarı': customer.netBalance,
+            'Risk Seviyesi': customer.riskLevel,
+            'Son Ödeme': customer.daysSinceLastPayment ? customer.daysSinceLastPayment + ' gün önce' : 'Hiç ödeme yok',
+            'Tahsilat Oranı': customer.paymentRate.toFixed(1) + '%',
+            'Toplam Satış': customer.totalSales,
+            'Toplam Ödeme': customer.totalPayments
+        }));
+        
+        // XLSX kütüphanesi kullanarak Excel dosyası oluştur
+        const ws = XLSX.utils.json_to_sheet(excelData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Borç Analiz Raporu');
+        
+        // Dosyayı indir
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbout], { type: 'application/octet-stream' });
+        
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `borc_analiz_raporu_${new Date().toISOString().split('T')[0]}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        showNotification('Borç analiz raporu Excel dosyası olarak indirildi', 'success');
+        
+    } catch (error) {
+        console.error('Excel aktarım hatası:', error);
+        showNotification('Excel aktarımı sırasında hata oluştu', 'error');
+    }
 }
 
 function showMonthlyReportModal(monthlyData) {
@@ -5378,6 +5859,9 @@ function showMonthlyReportModal(monthlyData) {
     `;
     
     showOrCreateModal('monthly-report-modal', modalHtml);
+    
+    // Global değişkene kaydet
+    window.currentMonthlyReport = monthlyData;
 }
 
 function showProductReportModal(productData) {
@@ -5426,6 +5910,9 @@ function showProductReportModal(productData) {
     `;
     
     showOrCreateModal('product-report-modal', modalHtml);
+    
+    // Global değişkene kaydet
+    window.currentProductReport = productData;
 }
 
 function restoreData() {
@@ -5656,6 +6143,191 @@ function printReport() {
     
     showNotification(`${currentCustomer.name} müşterisi için yazdırma raporu hazırlanıyor...`, 'info');
     // TODO: Implement print functionality
+}
+
+// Aylık rapor yazdırma fonksiyonu
+function printMonthlyReport() {
+    try {
+        const monthlyData = window.currentMonthlyReport;
+        if (!monthlyData || monthlyData.length === 0) {
+            showNotification('Yazdırılacak veri bulunamadı', 'error');
+            return;
+        }
+        
+        // Yazdırma için HTML oluştur
+        const printContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Aylık Performans Raporu</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .header h1 { color: #2d3748; margin-bottom: 10px; }
+                    .header p { color: #718096; margin: 0; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { padding: 12px; text-align: left; border: 1px solid #ddd; }
+                    th { background-color: #f7fafc; font-weight: bold; }
+                    .sales-amount { color: #38a169; font-weight: bold; }
+                    .payment-amount { color: #4299e1; font-weight: bold; }
+                    .debt-amount { color: #e53e3e; font-weight: bold; }
+                    .summary { margin-top: 30px; padding: 20px; background-color: #f7fafc; border-radius: 8px; }
+                    .summary h3 { margin-top: 0; color: #2d3748; }
+                    @media print {
+                        body { margin: 0; }
+                        .no-print { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>📅 Aylık Performans Raporu</h1>
+                    <p>Tarih: ${new Date().toLocaleDateString('tr-TR')}</p>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ay</th>
+                            <th style="text-align: right;">Toplam Satış</th>
+                            <th style="text-align: right;">Toplam Tahsilat</th>
+                            <th style="text-align: right;">Net Bakiye</th>
+                            <th style="text-align: center;">İşlem Sayısı</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${monthlyData.map(month => `
+                            <tr>
+                                <td style="font-weight: 500;">${month.month}</td>
+                                <td style="text-align: right;" class="sales-amount">${formatMoney(month.totalSales)}</td>
+                                <td style="text-align: right;" class="payment-amount">${formatMoney(month.totalPayments)}</td>
+                                <td style="text-align: right;" class="debt-amount">${formatMoney(month.netBalance)}</td>
+                                <td style="text-align: center;">${month.transactionCount}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                
+                <div class="summary">
+                    <h3>📊 Özet</h3>
+                    <p><strong>Toplam Satış:</strong> ${formatMoney(monthlyData.reduce((sum, m) => sum + m.totalSales, 0))}</p>
+                    <p><strong>Toplam Tahsilat:</strong> ${formatMoney(monthlyData.reduce((sum, m) => sum + m.totalPayments, 0))}</p>
+                    <p><strong>Net Bakiye:</strong> ${formatMoney(monthlyData.reduce((sum, m) => sum + m.netBalance, 0))}</p>
+                    <p><strong>Toplam İşlem:</strong> ${monthlyData.reduce((sum, m) => sum + m.transactionCount, 0)}</p>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        // Yeni pencere aç ve yazdır
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(printContent);
+        printWindow.document.close();
+        
+        // Yazdırma dialogunu aç
+        setTimeout(() => {
+            printWindow.print();
+        }, 500);
+        
+        showNotification('Aylık performans raporu yazdırma için hazırlandı', 'success');
+        
+    } catch (error) {
+        console.error('Aylık rapor yazdırma hatası:', error);
+        showNotification('Yazdırma sırasında hata oluştu', 'error');
+    }
+}
+
+// Ürün raporu yazdırma fonksiyonu
+function printProductReport() {
+    try {
+        const productData = window.currentProductReport;
+        if (!productData || productData.length === 0) {
+            showNotification('Yazdırılacak veri bulunamadı', 'error');
+            return;
+        }
+        
+        // Yazdırma için HTML oluştur
+        const printContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Ürün Satış Raporu</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .header h1 { color: #2d3748; margin-bottom: 10px; }
+                    .header p { color: #718096; margin: 0; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { padding: 12px; text-align: left; border: 1px solid #ddd; }
+                    th { background-color: #f7fafc; font-weight: bold; }
+                    .sales-amount { color: #38a169; font-weight: bold; }
+                    .revenue-amount { color: #4299e1; font-weight: bold; }
+                    .summary { margin-top: 30px; padding: 20px; background-color: #f7fafc; border-radius: 8px; }
+                    .summary h3 { margin-top: 0; color: #2d3748; }
+                    @media print {
+                        body { margin: 0; }
+                        .no-print { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>📦 Ürün Satış Raporu</h1>
+                    <p>Tarih: ${new Date().toLocaleDateString('tr-TR')}</p>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ürün Adı</th>
+                            <th style="text-align: right;">Satılan Miktar</th>
+                            <th style="text-align: right;">Toplam Gelir</th>
+                            <th style="text-align: right;">Ortalama Fiyat</th>
+                            <th style="text-align: center;">Satış Sayısı</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${productData.map(product => `
+                            <tr>
+                                <td style="font-weight: 500;">${product.name}</td>
+                                <td style="text-align: right;" class="sales-amount">${product.totalQuantity}</td>
+                                <td style="text-align: right;" class="revenue-amount">${formatMoney(product.totalRevenue)}</td>
+                                <td style="text-align: right;">${formatMoney(product.averagePrice)}</td>
+                                <td style="text-align: center;">${product.salesCount}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                
+                <div class="summary">
+                    <h3>📊 Özet</h3>
+                    <p><strong>Toplam Satılan Miktar:</strong> ${productData.reduce((sum, p) => sum + p.totalQuantity, 0)}</p>
+                    <p><strong>Toplam Gelir:</strong> ${formatMoney(productData.reduce((sum, p) => sum + p.totalRevenue, 0))}</p>
+                    <p><strong>Toplam Satış Sayısı:</strong> ${productData.reduce((sum, p) => sum + p.salesCount, 0)}</p>
+                    <p><strong>En Çok Satılan Ürün:</strong> ${productData.sort((a, b) => b.totalQuantity - a.totalQuantity)[0]?.name || 'N/A'}</p>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        // Yeni pencere aç ve yazdır
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(printContent);
+        printWindow.document.close();
+        
+        // Yazdırma dialogunu aç
+        setTimeout(() => {
+            printWindow.print();
+        }, 500);
+        
+        showNotification('Ürün satış raporu yazdırma için hazırlandı', 'success');
+        
+    } catch (error) {
+        console.error('Ürün raporu yazdırma hatası:', error);
+        showNotification('Yazdırma sırasında hata oluştu', 'error');
+    }
 }
 
 // App quit function

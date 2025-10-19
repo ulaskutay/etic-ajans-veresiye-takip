@@ -790,6 +790,9 @@ async function deleteProduct(id) {
             container.innerHTML = createSimpleProductsList();
         }
         
+        // Satış ekranındaki ürün seçimini güncelle (silinen ürünü kaldır)
+        updateSaleProductSelectAfterDelete(id);
+        
         showNotification('Ürün başarıyla silindi', 'success');
     } catch (error) {
         console.error('Ürün silinemedi:', error);
@@ -1367,6 +1370,39 @@ function updateSaleProductSelect(newProduct) {
     }
 }
 
+// Satış ekranındaki ürün seçimini güncelle (ürün silme sonrası)
+function updateSaleProductSelectAfterDelete(deletedProductId) {
+    const saleProductSelect = document.getElementById('sale-product');
+    if (saleProductSelect) {
+        console.log('Satış ürün select bulundu, silinen ürün kaldırılıyor:', deletedProductId);
+        
+        // Eğer silinen ürün seçiliyse, seçimi temizle
+        if (saleProductSelect.value == deletedProductId) {
+            saleProductSelect.value = '';
+            // Form alanlarını temizle
+            const saleAmount = document.getElementById('sale-amount');
+            const saleDescription = document.getElementById('sale-description');
+            if (saleAmount) saleAmount.value = '';
+            if (saleDescription) saleDescription.value = '';
+        }
+        
+        // Silinen ürünü seçeneklerden kaldır
+        const optionToRemove = saleProductSelect.querySelector(`option[value="${deletedProductId}"]`);
+        if (optionToRemove) {
+            optionToRemove.remove();
+        }
+        
+        // Tüm aktif ürünleri yeniden yükle (sadece satış ekranı için)
+        if (typeof loadProductsForSale === 'function') {
+            loadProductsForSale().then(() => {
+                console.log('Satış ekranındaki ürün listesi güncellendi (silinen ürün kaldırıldı)');
+            });
+        }
+    } else {
+        console.warn('Satış ürün select bulunamadı');
+    }
+}
+
 // Global fonksiyonlar
 window.showProductManagement = showProductManagement;
 window.showProductModalFromSale = showProductModalFromSale;
@@ -1375,6 +1411,8 @@ window.handleAddProduct = handleAddProduct;
 window.showCategoriesModal = showCategoriesModal;
 window.showBrandsModal = showBrandsModal;
 window.showAddCategoryModal = showAddCategoryModal;
+window.updateSaleProductSelect = updateSaleProductSelect;
+window.updateSaleProductSelectAfterDelete = updateSaleProductSelectAfterDelete;
 window.showAddBrandModal = showAddBrandModal;
 window.handleAddCategory = handleAddCategory;
 window.handleAddBrand = handleAddBrand;
