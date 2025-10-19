@@ -6,6 +6,8 @@ let currentCustomer = null;
 let sales = [];
 let purchases = [];
 let products = []; // Ürünler listesi
+let categories = []; // Kategoriler listesi
+let brands = []; // Markalar listesi
 let selectedCustomerId = null; // Seçili müşteri ID'si
 
 // Sayfa yüklendiğinde
@@ -98,8 +100,8 @@ function setupEventListeners() {
         { id: 'edit-customer-form', handler: handleEditCustomer },
         { id: 'add-sale-form', handler: handleAddSale },
         { id: 'add-purchase-form', handler: handleAddPurchase },
-        { id: 'add-product-form', handler: handleAddProduct },
-        { id: 'quick-add-product-form', handler: handleQuickAddProduct },
+        // { id: 'add-product-form', handler: handleAddProduct }, // Artık product-module.js'de yönetiliyor - KALDIRILDI
+        // { id: 'quick-add-product-form', handler: handleQuickAddProduct }, // Modal kaldırıldı
         { id: 'edit-sale-form', handler: handleEditSale },
         { id: 'edit-purchase-form', handler: handleEditPurchase }
     ];
@@ -1714,115 +1716,19 @@ async function loadProductsForSale() {
     }
 }
 
-// Show quick add product modal
-function showQuickAddProduct() {
-    document.getElementById('quick-add-product-form').reset();
-    showModal('quick-add-product-modal');
-    document.getElementById('quick-product-name').focus();
-}
+// Show quick add product modal - KALDIRILDI (artık product-module.js'de yönetiliyor)
+// function showQuickAddProduct() {
+//     document.getElementById('quick-add-product-form').reset();
+//     showModal('quick-add-product-modal');
+//     document.getElementById('quick-product-name').focus();
+// }
 
-// Handle quick add product
-async function handleQuickAddProduct(e) {
-    e.preventDefault();
-    
-    const name = document.getElementById('quick-product-name').value.trim();
-    const price = parseFloat(document.getElementById('quick-product-price').value);
-    const vatRate = parseFloat(document.getElementById('quick-product-vat').value);
-    
-    if (!name || !price || price <= 0) {
-        showNotification('Tüm alanları doldurun', 'error');
-        return;
-    }
-    
-    try {
-        // Calculate price without VAT
-        const priceWithoutVat = price / (1 + vatRate / 100);
-        const purchasePrice = priceWithoutVat * 0.7; // 30% profit margin on price without VAT
-        
-        const productData = {
-            name: name,
-            code: '',
-            barcode: '',
-            unit: 'adet',
-            purchase_price: purchasePrice,
-            sale_price: price, // KDV dahil fiyat
-            vat_rate: vatRate,
-            stock: 0,
-            min_stock: 0,
-            category: '',
-            description: ''
-        };
-        
-        const result = await ipcRenderer.invoke('add-product', productData);
-        
-        showNotification('Ürün başarıyla eklendi', 'success');
-        closeModal('quick-add-product-modal');
-        
-        // Reload products
-        await loadProductsForSale();
-        
-        // Auto-select the newly added product
-        document.getElementById('sale-product').value = result.id;
-        
-        // Trigger change event to fill price
-        document.getElementById('sale-product').dispatchEvent(new Event('change'));
-        
-    } catch (error) {
-        console.error('Ürün eklenirken hata:', error);
-        showNotification('Ürün eklenirken hata oluştu', 'error');
-    }
-}
+// Handle quick add product - KALDIRILDI (artık product-module.js'de yönetiliyor)
+// async function handleQuickAddProduct(e) {
+//     // Fonksiyon kaldırıldı - artık product-module.js'de yönetiliyor
+// }
 
-// Handle add product (from product management)
-async function handleAddProduct(e) {
-    e.preventDefault();
-    
-    const name = document.getElementById('product-name').value.trim();
-    const code = document.getElementById('product-code').value.trim();
-    const barcode = document.getElementById('product-barcode').value.trim();
-    const unit = document.getElementById('product-unit').value;
-    const purchasePrice = parseFloat(document.getElementById('product-purchase-price').value) || 0;
-    const salePrice = parseFloat(document.getElementById('product-sale-price').value);
-    const vatRate = parseFloat(document.getElementById('product-vat').value);
-    const stock = parseFloat(document.getElementById('product-stock').value) || 0;
-    const minStock = parseFloat(document.getElementById('product-min-stock').value) || 0;
-    const category = document.getElementById('product-category').value.trim();
-    const description = document.getElementById('product-description').value.trim();
-    
-    if (!name || !salePrice || salePrice <= 0) {
-        showNotification('Ürün adı ve satış fiyatı zorunludur', 'error');
-        return;
-    }
-    
-    try {
-        const productData = {
-            name,
-            code,
-            barcode,
-            unit,
-            purchase_price: purchasePrice,
-            sale_price: salePrice,
-            vat_rate: vatRate,
-            stock,
-            min_stock: minStock,
-            category,
-            description
-        };
-        
-        await ipcRenderer.invoke('add-product', productData);
-        
-        showNotification('Ürün başarıyla eklendi', 'success');
-        closeModal('add-product-modal');
-        document.getElementById('add-product-form').reset();
-        
-        // If product management modal is open, reload products
-        // (This will be handled by loadProducts function if called)
-        
-    } catch (error) {
-        console.error('Ürün eklenirken hata:', error);
-        showNotification('Ürün eklenirken hata oluştu', 'error');
-    }
-}
+// ESKİ handleAddProduct FONKSİYONU KALDIRILDI - product-module.js kullanılıyor
 
 async function addPurchase() {
     if (!currentCustomer) {
@@ -3862,6 +3768,8 @@ function showReportsModal() {
 }
 
 // Ürün Yönetimi Modal - Profesyonel Versiyon
+// ESKİ ÜRÜN YÖNETİMİ DEVRE DIŞI - product-management.js kullanılıyor
+/* 
 async function showProductManagement() {
     try {
         // Mevcut ürünleri getir
@@ -4038,6 +3946,7 @@ async function showProductManagement() {
         showNotification('Ürünler yüklenirken hata oluştu', 'error');
     }
 }
+*/
 
 // Ürün filtreleme
 function filterProducts() {
@@ -4093,167 +4002,9 @@ function clearProductFilters() {
     filterProducts();
 }
 
-// Ürün düzenleme modal'ı
-async function editProduct(productId) {
-    try {
-        const products = await ipcRenderer.invoke('get-products');
-        const product = products.find(p => p.id === productId);
-        
-        if (!product) {
-            showNotification('Ürün bulunamadı', 'error');
-            return;
-        }
-        
-        const modalHtml = `
-            <div id="edit-product-modal" class="modal active" onclick="if(event.target.id === 'edit-product-modal') closeModal('edit-product-modal')">
-                <div class="modal-content" style="max-width: 800px;" onclick="event.stopPropagation()">
-                    <div class="modal-header">
-                        <h2>✏️ Ürün Düzenle</h2>
-                        <button class="close-btn" onclick="closeModal('edit-product-modal')">&times;</button>
-                    </div>
-                    
-                    <div style="padding: 20px;">
-                        <form id="edit-product-form" onsubmit="handleEditProduct(event, ${productId})">
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                        <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Ürün Adı *</label>
-                                    <input type="text" id="edit-product-name" name="name" value="${product.name}" 
-                                           style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" required>
-                                </div>
-                                
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Ürün Kodu</label>
-                                    <input type="text" id="edit-product-code" name="code" value="${product.code || ''}" 
-                                           style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                                </div>
-                                
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Barkod</label>
-                                    <input type="text" id="edit-product-barcode" name="barcode" value="${product.barcode || ''}" 
-                                           style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                                </div>
-                                
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Birim</label>
-                                    <select id="edit-product-unit" name="unit" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                                        <option value="adet" ${product.unit === 'adet' ? 'selected' : ''}>Adet</option>
-                                        <option value="kg" ${product.unit === 'kg' ? 'selected' : ''}>Kilogram</option>
-                                        <option value="lt" ${product.unit === 'lt' ? 'selected' : ''}>Litre</option>
-                                        <option value="m" ${product.unit === 'm' ? 'selected' : ''}>Metre</option>
-                                        <option value="m²" ${product.unit === 'm²' ? 'selected' : ''}>Metrekare</option>
-                                        <option value="paket" ${product.unit === 'paket' ? 'selected' : ''}>Paket</option>
-                                    </select>
-                                </div>
-                                
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Alış Fiyatı (₺)</label>
-                                    <input type="number" id="edit-product-purchase-price" name="purchase_price" value="${product.purchase_price}" 
-                                           step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                            </div>
-                                
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Satış Fiyatı (₺) *</label>
-                                    <input type="number" id="edit-product-sale-price" name="sale_price" value="${product.sale_price}" 
-                                           step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" required>
-                        </div>
-                                
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">KDV Oranı (%)</label>
-                                    <input type="number" id="edit-product-vat" name="vat_rate" value="${product.vat_rate}" 
-                                           step="0.1" min="0" max="100" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                    </div>
-                    
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Stok Miktarı</label>
-                                    <input type="number" id="edit-product-stock" name="stock" value="${product.stock}" 
-                                           step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                                </div>
-                                
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Minimum Stok</label>
-                                    <input type="number" id="edit-product-min-stock" name="min_stock" value="${product.min_stock}" 
-                                           step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                                </div>
-                                
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Kategori</label>
-                                    <input type="text" id="edit-product-category" name="category" value="${product.category || ''}" 
-                                           style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                                </div>
-                            </div>
-                            
-                            <div style="margin-bottom: 20px;">
-                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Açıklama</label>
-                                <textarea id="edit-product-description" name="description" rows="3" 
-                                          style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; resize: vertical;">${product.description || ''}</textarea>
-                            </div>
-                            
-                            <div style="margin-bottom: 20px;">
-                                <label style="display: flex; align-items: center; gap: 8px;">
-                                    <input type="checkbox" id="edit-product-active" name="is_active" ${product.is_active ? 'checked' : ''}>
-                                    <span style="font-weight: 600; color: #374151;">Aktif Ürün</span>
-                                </label>
-                            </div>
-                            
-                            <div style="display: flex; gap: 15px; justify-content: flex-end;">
-                                <button type="button" onclick="closeModal('edit-product-modal')" 
-                                        style="padding: 12px 24px; background: #6b7280; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                                    ❌ İptal
-                            </button>
-                                <button type="submit" 
-                                        style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                                    💾 Güncelle
-                            </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        showOrCreateModal('edit-product-modal', modalHtml);
-        
-    } catch (error) {
-        console.error('Edit product modal error:', error);
-        showNotification('Ürün düzenleme modal\'ı açılırken hata oluştu', 'error');
-    }
-}
+// ESKİ ÜRÜN DÜZENLEME FONKSİYONU KALDIRILDI - product-module.js kullanılıyor
 
-// Ürün düzenleme işlemi
-async function handleEditProduct(event, productId) {
-    event.preventDefault();
-    
-    try {
-        const formData = new FormData(event.target);
-        const productData = {
-            name: formData.get('name'),
-            code: formData.get('code'),
-            barcode: formData.get('barcode'),
-            unit: formData.get('unit'),
-            purchase_price: parseFloat(formData.get('purchase_price')) || 0,
-            sale_price: parseFloat(formData.get('sale_price')),
-            vat_rate: parseFloat(formData.get('vat_rate')) || 0,
-            stock: parseFloat(formData.get('stock')) || 0,
-            min_stock: parseFloat(formData.get('min_stock')) || 0,
-            category: formData.get('category'),
-            description: formData.get('description'),
-            is_active: formData.get('is_active') ? 1 : 0
-        };
-        
-        await ipcRenderer.invoke('update-product', productId, productData);
-        
-        showNotification('✅ Ürün başarıyla güncellendi', 'success');
-        closeModal('edit-product-modal');
-        
-        // Ürün yönetimi modal'ını yenile
-        closeModal('product-management-modal');
-        setTimeout(() => showProductManagement(), 100);
-        
-    } catch (error) {
-        console.error('Update product error:', error);
-        showNotification('Ürün güncellenirken hata oluştu', 'error');
-    }
-}
+// ESKİ handleEditProduct FONKSİYONU KALDIRILDI - product-module.js kullanılıyor
 
 // Ürün silme
 async function deleteProduct(productId) {
@@ -4275,117 +4026,7 @@ async function deleteProduct(productId) {
     }
 }
 
-// Ürün ekleme modal'ı
-function showAddProductModal() {
-    const modalHtml = `
-        <div id="add-product-modal" class="modal active" onclick="if(event.target.id === 'add-product-modal') closeModal('add-product-modal')">
-            <div class="modal-content" style="max-width: 800px;" onclick="event.stopPropagation()">
-                <div class="modal-header">
-                    <h2>➕ Yeni Ürün Ekle</h2>
-                    <button class="close-btn" onclick="closeModal('add-product-modal')">&times;</button>
-                </div>
-                
-                <div style="padding: 20px;">
-                    <form id="add-product-form" onsubmit="handleAddProduct(event)">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                            <div>
-                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Ürün Adı *</label>
-                                <input type="text" id="product-name" name="name" 
-                                       style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" required>
-                            </div>
-                            
-                            <div>
-                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Ürün Kodu</label>
-                                <input type="text" id="product-code" name="code" 
-                                       style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                            </div>
-                            
-                            <div>
-                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Barkod</label>
-                                <input type="text" id="product-barcode" name="barcode" 
-                                       style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                            </div>
-                            
-                            <div>
-                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Birim</label>
-                                <select id="product-unit" name="unit" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                                    <option value="adet">Adet</option>
-                                    <option value="kg">Kilogram</option>
-                                    <option value="lt">Litre</option>
-                                    <option value="m">Metre</option>
-                                    <option value="m²">Metrekare</option>
-                                    <option value="paket">Paket</option>
-                                </select>
-                            </div>
-                            
-                            <div>
-                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Alış Fiyatı (₺)</label>
-                                <input type="number" id="product-purchase-price" name="purchase_price" 
-                                       step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                            </div>
-                            
-                            <div>
-                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Satış Fiyatı (₺) *</label>
-                                <input type="number" id="product-sale-price" name="sale_price" 
-                                       step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" required>
-                            </div>
-                            
-                            <div>
-                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">KDV Oranı (%)</label>
-                                <input type="number" id="product-vat" name="vat_rate" value="20" 
-                                       step="0.1" min="0" max="100" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                            </div>
-                            
-                            <div>
-                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Stok Miktarı</label>
-                                <input type="number" id="product-stock" name="stock" 
-                                       step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                            </div>
-                            
-                            <div>
-                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Minimum Stok</label>
-                                <input type="number" id="product-min-stock" name="min_stock" 
-                                       step="0.01" min="0" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                            </div>
-                            
-                            <div>
-                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Kategori</label>
-                                <input type="text" id="product-category" name="category" 
-                                       style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                            </div>
-                        </div>
-                        
-                        <div style="margin-bottom: 20px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Açıklama</label>
-                            <textarea id="product-description" name="description" rows="3" 
-                                      style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; resize: vertical;"></textarea>
-                        </div>
-                        
-                        <div style="margin-bottom: 20px;">
-                            <label style="display: flex; align-items: center; gap: 8px;">
-                                <input type="checkbox" id="product-active" name="is_active" checked>
-                                <span style="font-weight: 600; color: #374151;">Aktif Ürün</span>
-                            </label>
-                        </div>
-                        
-                        <div style="display: flex; gap: 15px; justify-content: flex-end;">
-                            <button type="button" onclick="closeModal('add-product-modal')" 
-                                    style="padding: 12px 24px; background: #6b7280; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                                ❌ İptal
-                            </button>
-                            <button type="submit" 
-                                    style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                                💾 Kaydet
-                            </button>
-                        </div>
-                    </form>
-                    </div>
-            </div>
-        </div>
-    `;
-    
-    showOrCreateModal('add-product-modal', modalHtml);
-}
+// ESKİ ÜRÜN EKLEME MODAL'I KALDIRILDI - product-module.js kullanılıyor
 
 // Ürünleri Excel'e aktar
 async function exportProductsToExcel() {

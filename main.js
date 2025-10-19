@@ -7,7 +7,7 @@ let mainWindow;
 let db;
 
 // Veritabanını başlat
-function initDatabase() {
+async function initDatabase() {
     try {
         const dbPath = path.join(app.getPath('userData'), 'veresiye.db');
         console.log('Database path:', dbPath);
@@ -112,9 +112,13 @@ function initDatabase() {
                 stock REAL DEFAULT 0,
                 min_stock REAL DEFAULT 0,
                 category TEXT,
+                category_id INTEGER,
+                brand_id INTEGER,
                 description TEXT,
                 is_active INTEGER DEFAULT 1,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (category_id) REFERENCES categories (id),
+                FOREIGN KEY (brand_id) REFERENCES brands (id)
             );
             
             CREATE TABLE IF NOT EXISTS transactions (
@@ -153,6 +157,19 @@ function initDatabase() {
             );
         `);
         
+        // Mevcut products tablosuna yeni sütunları ekle (eğer yoksa)
+        try {
+            await db.run(`ALTER TABLE products ADD COLUMN category_id INTEGER`);
+        } catch (e) {
+            // Sütun zaten varsa hata vermez
+        }
+        
+        try {
+            await db.run(`ALTER TABLE products ADD COLUMN brand_id INTEGER`);
+        } catch (e) {
+            // Sütun zaten varsa hata vermez
+        }
+        
         console.log('Database initialized successfully');
     } catch (error) {
         console.error('Database initialization error:', error);
@@ -180,8 +197,8 @@ function createWindow() {
         console.log('Window shown');
     });
 
-    // Console'u kapat (production için)
-    // mainWindow.webContents.openDevTools();
+    // Console'u aç (development için)
+    mainWindow.webContents.openDevTools();
     console.log('🔧 Application started');
 
     // Menü oluştur
@@ -540,6 +557,132 @@ function setupIpcHandlers() {
             return [];
         }
     });
+    
+    ipcMain.handle('get-categories', () => {
+        try {
+            const stmt = db.prepare('SELECT * FROM categories WHERE is_active = 1 ORDER BY name');
+            return stmt.all();
+        } catch (error) {
+            console.error('Get categories error:', error);
+            return [];
+        }
+    });
+    
+    ipcMain.handle('get-brands', () => {
+        try {
+            const stmt = db.prepare('SELECT * FROM brands WHERE is_active = 1 ORDER BY name');
+            return stmt.all();
+        } catch (error) {
+            console.error('Get brands error:', error);
+            return [];
+        }
+    });
+
+    ipcMain.handle('add-category', (event, category) => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+            console.log('Adding category:', category);
+            const stmt = db.prepare('INSERT INTO categories (name, icon, color, description) VALUES (?, ?, ?, ?)');
+            const result = stmt.run(
+                category.name,
+                category.icon || '📦',
+                category.color || '#667eea',
+                category.description || null
+            );
+            console.log('Category added successfully, ID:', result.lastInsertRowid);
+            return { id: result.lastInsertRowid, ...category };
+        } catch (error) {
+            console.error('Add category error:', error);
+            throw error;
+        }
+    });
+    
+    ipcMain.handle('add-brand', (event, brand) => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+            console.log('Adding brand:', brand);
+            const stmt = db.prepare('INSERT INTO brands (name, logo, description, website) VALUES (?, ?, ?, ?)');
+            const result = stmt.run(
+                brand.name,
+                brand.logo || '🏷️',
+                brand.description || null,
+                brand.website || null
+            );
+            console.log('Brand added successfully, ID:', result.lastInsertRowid);
+            return { id: result.lastInsertRowid, ...brand };
+        } catch (error) {
+            console.error('Add brand error:', error);
+            throw error;
+        }
+    });
+    
+    ipcMain.handle('update-category', (event, category) => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+            console.log('Updating category:', category);
+            const stmt = db.prepare('UPDATE categories SET name = ? WHERE id = ?');
+            stmt.run(category.name, category.id);
+            console.log('Category updated successfully');
+            return category;
+        } catch (error) {
+            console.error('Update category error:', error);
+            throw error;
+        }
+    });
+    
+    ipcMain.handle('delete-category', (event, id) => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+            console.log('Deleting category:', id);
+            const stmt = db.prepare('UPDATE categories SET is_active = 0 WHERE id = ?');
+            stmt.run(id);
+            console.log('Category deleted successfully');
+            return { success: true };
+        } catch (error) {
+            console.error('Delete category error:', error);
+            throw error;
+        }
+    });
+    
+    ipcMain.handle('update-brand', (event, brand) => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+            console.log('Updating brand:', brand);
+            const stmt = db.prepare('UPDATE brands SET name = ? WHERE id = ?');
+            stmt.run(brand.name, brand.id);
+            console.log('Brand updated successfully');
+            return brand;
+        } catch (error) {
+            console.error('Update brand error:', error);
+            throw error;
+        }
+    });
+    
+    ipcMain.handle('delete-brand', (event, id) => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+            console.log('Deleting brand:', id);
+            const stmt = db.prepare('UPDATE brands SET is_active = 0 WHERE id = ?');
+            stmt.run(id);
+            console.log('Brand deleted successfully');
+            return { success: true };
+        } catch (error) {
+            console.error('Delete brand error:', error);
+            throw error;
+        }
+    });
 
     ipcMain.handle('add-product', (event, product) => {
         try {
@@ -547,7 +690,7 @@ function setupIpcHandlers() {
                 throw new Error('Veritabanı başlatılmadı');
             }
             console.log('Adding product:', product);
-            const stmt = db.prepare('INSERT INTO products (name, code, barcode, unit, purchase_price, sale_price, vat_rate, stock, min_stock, category, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            const stmt = db.prepare('INSERT INTO products (name, code, barcode, unit, purchase_price, sale_price, vat_rate, stock, min_stock, category_id, brand_id, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
             const result = stmt.run(
                 product.name, 
                 product.code, 
@@ -558,7 +701,8 @@ function setupIpcHandlers() {
                 product.vat_rate || 20,
                 product.stock || 0,
                 product.min_stock || 0,
-                product.category,
+                product.category_id || null,
+                product.brand_id || null,
                 product.description
             );
             console.log('Product added successfully, ID:', result.lastInsertRowid);
@@ -575,7 +719,7 @@ function setupIpcHandlers() {
                 throw new Error('Veritabanı başlatılmadı');
             }
             console.log('Updating product:', product);
-            const stmt = db.prepare('UPDATE products SET name = ?, code = ?, barcode = ?, unit = ?, purchase_price = ?, sale_price = ?, vat_rate = ?, stock = ?, min_stock = ?, category = ?, description = ? WHERE id = ?');
+            const stmt = db.prepare('UPDATE products SET name = ?, code = ?, barcode = ?, unit = ?, purchase_price = ?, sale_price = ?, vat_rate = ?, stock = ?, min_stock = ?, category_id = ?, brand_id = ?, description = ? WHERE id = ?');
             const result = stmt.run(
                 product.name, 
                 product.code, 
@@ -586,12 +730,13 @@ function setupIpcHandlers() {
                 product.vat_rate || 20,
                 product.stock,
                 product.min_stock,
-                product.category,
+                product.category_id || null,
+                product.brand_id || null,
                 product.description,
                 product.id
             );
             console.log('Product updated successfully, affected rows:', result.changes);
-            return { success: true, affectedRows: result.changes };
+            return { id: product.id, ...product };
         } catch (error) {
             console.error('Update product error:', error);
             throw error;
