@@ -501,6 +501,15 @@ async function handleAddProduct(event) {
         console.log('Yeni ürün eklendi, satış ekranı güncelleniyor:', newProduct);
         updateSaleProductSelect(newProduct);
         
+        // Eğer bu modal satış ekranından açıldıysa, satış ekranına odaklan
+        setTimeout(() => {
+            const saleProductSelect = document.getElementById('sale-product');
+            if (saleProductSelect) {
+                saleProductSelect.focus();
+                console.log('Satış ekranındaki ürün seçimi odaklandı');
+            }
+        }, 100);
+        
     } catch (error) {
         console.error('Ürün eklenirken hata:', error);
         showNotification('Ürün eklenirken hata oluştu', 'error');
@@ -1321,22 +1330,40 @@ function updateSaleProductSelect(newProduct) {
     const saleProductSelect = document.getElementById('sale-product');
     if (saleProductSelect) {
         console.log('Satış ürün select bulundu, yeni ürün ekleniyor:', newProduct);
-        // Yeni ürünü seçeneklere ekle
-        const newOption = document.createElement('option');
-        newOption.value = newProduct.id;
-        newOption.textContent = `${newProduct.name} - ₺${newProduct.sale_price}`;
-        saleProductSelect.appendChild(newOption);
         
-        // Yeni eklenen ürünü seç
-        saleProductSelect.value = newProduct.id;
-        console.log('Yeni ürün seçildi:', saleProductSelect.value);
+        // Önce mevcut seçenekleri temizle
+        saleProductSelect.innerHTML = '<option value="">Ürün seçin...</option>';
         
-        // Eğer renderer.js'de loadProductsForSale fonksiyonu varsa çağır
+        // Tüm aktif ürünleri yeniden yükle
         if (typeof loadProductsForSale === 'function') {
-            loadProductsForSale();
+            loadProductsForSale().then(() => {
+                // Yeni eklenen ürünü seç
+                saleProductSelect.value = newProduct.id;
+                console.log('Yeni ürün seçildi:', saleProductSelect.value);
+                
+                // Change event'ini tetikle (fiyat güncellemesi için)
+                const changeEvent = new Event('change', { bubbles: true });
+                saleProductSelect.dispatchEvent(changeEvent);
+                
+                console.log('Satış ekranındaki ürün seçimi güncellendi:', newProduct.name);
+            });
+        } else {
+            // Fallback: Sadece yeni ürünü ekle
+            const newOption = document.createElement('option');
+            newOption.value = newProduct.id;
+            newOption.textContent = `${newProduct.name} - ₺${newProduct.sale_price}`;
+            saleProductSelect.appendChild(newOption);
+            
+            // Yeni eklenen ürünü seç
+            saleProductSelect.value = newProduct.id;
+            console.log('Yeni ürün seçildi (fallback):', saleProductSelect.value);
+            
+            // Change event'ini tetikle
+            const changeEvent = new Event('change', { bubbles: true });
+            saleProductSelect.dispatchEvent(changeEvent);
         }
-        
-        console.log('Satış ekranındaki ürün seçimi güncellendi:', newProduct.name);
+    } else {
+        console.warn('Satış ürün select bulunamadı');
     }
 }
 

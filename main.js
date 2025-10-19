@@ -198,7 +198,7 @@ function createWindow() {
     });
 
     // Console'u aç (development için)
-    mainWindow.webContents.openDevTools();
+    // mainWindow.webContents.openDevTools();
     console.log('🔧 Application started');
 
     // Menü oluştur

@@ -539,9 +539,379 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+// Excel ile müşteri import modalını göster
+function showExcelCustomerImportModal() {
+    const modalHtml = `
+        <div id="excel-customer-import-modal" class="modal active" style="z-index: 9999;">
+            <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px 12px 0 0; color: white; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0; font-size: 20px; font-weight: 600;">📊 Excel ile Müşteri Import</h3>
+                    <button onclick="event.stopPropagation(); closeExcelCustomerImportModal()" 
+                            style="background: rgba(255,255,255,0.2); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 24px; transition: all 0.3s;"
+                            onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
+                            onmouseout="this.style.background='rgba(255,255,255,0.2)'"
+                            title="Kapat">
+                        ×
+                    </button>
+                </div>
+                
+                <div style="padding: 24px;">
+                    <!-- Şablon İndirme -->
+                    <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 12px 0; color: #374151; font-size: 16px;">📥 Excel Şablonu</h4>
+                        <p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px;">Müşteri bilgilerini Excel şablonuna göre doldurun ve yükleyin.</p>
+                        <button onclick="downloadCustomerExcelTemplate()" 
+                                style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 500; display: flex; align-items: center; gap: 8px;">
+                            📥 Şablon İndir
+                        </button>
+                    </div>
+                    
+                    <!-- Dosya Seçimi -->
+                    <div style="background: white; border: 2px dashed #d1d5db; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: center;">
+                        <input type="file" id="customer-excel-file" accept=".xlsx,.xls" 
+                               style="display: none;" onchange="handleCustomerExcelFileSelect(event)">
+                        <div style="font-size: 48px; margin-bottom: 12px;">📁</div>
+                        <h4 style="margin: 0 0 8px 0; color: #374151;">Excel Dosyasını Seçin</h4>
+                        <p style="margin: 0 0 16px 0; color: #6b7280; font-size: 14px;">.xlsx veya .xls formatında dosya yükleyin</p>
+                        <button onclick="document.getElementById('customer-excel-file').click()" 
+                                style="background: #f3f4f6; color: #374151; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                            📁 Dosya Seç
+                        </button>
+                    </div>
+                    
+                    <!-- Önizleme -->
+                    <div id="customer-excel-preview-section" style="display: none;">
+                        <h4 style="margin: 0 0 16px 0; color: #374151; font-size: 16px;">📋 Veri Önizleme</h4>
+                        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+                            <div id="customer-excel-preview-table" style="max-height: 300px; overflow-y: auto;"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding: 12px; background: #f8f9fa; border-radius: 8px;">
+                            <div style="display: flex; gap: 20px; font-size: 14px;">
+                                <span style="color: #10b981;">✅ Geçerli: <strong id="customer-valid-count">0</strong></span>
+                                <span style="color: #ef4444;">❌ Hatalı: <strong id="customer-error-count">0</strong></span>
+                            </div>
+                            <button onclick="importCustomersFromExcel()" 
+                                    style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                                📤 Müşterileri Yükle
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+// Müşteri Excel şablonunu indir
+function downloadCustomerExcelTemplate() {
+    const templateData = [
+        {
+            'Müşteri Adı': 'Ahmet Yılmaz',
+            'Müşteri Kodu': 'MUST001',
+            'Telefon': '0532 123 45 67',
+            'GSM': '0532 123 45 67',
+            'Adres': 'İstanbul, Türkiye',
+            'Kredi Limiti': '1000',
+            'Vergi Dairesi': 'İstanbul VD',
+            'Vergi Numarası': '1234567890',
+            'TC Numarası': '12345678901',
+            'E-posta': 'ahmet@example.com',
+            'Web Sitesi': 'www.example.com',
+            'Müşteri Tipi': 'individual',
+            'Fatura Adresi': 'İstanbul, Türkiye',
+            'Fatura Şehri': 'İstanbul',
+            'Fatura İlçesi': 'Kadıköy',
+            'Posta Kodu': '34710',
+            'Yetkili Kişi': 'Ahmet Yılmaz',
+            'Yetkili Telefon': '0532 123 45 67',
+            'Hesap Kodu': '120.001',
+            'Maliyet Merkezi': 'Ana'
+        },
+        {
+            'Müşteri Adı': 'ABC Şirketi Ltd.',
+            'Müşteri Kodu': 'MUST002',
+            'Telefon': '0212 555 66 77',
+            'GSM': '0533 444 55 66',
+            'Adres': 'Ankara, Türkiye',
+            'Kredi Limiti': '5000',
+            'Vergi Dairesi': 'Ankara VD',
+            'Vergi Numarası': '9876543210',
+            'TC Numarası': '',
+            'E-posta': 'info@abc.com',
+            'Web Sitesi': 'www.abc.com',
+            'Müşteri Tipi': 'company',
+            'Fatura Adresi': 'Ankara, Türkiye',
+            'Fatura Şehri': 'Ankara',
+            'Fatura İlçesi': 'Çankaya',
+            'Posta Kodu': '06420',
+            'Yetkili Kişi': 'Mehmet Demir',
+            'Yetkili Telefon': '0533 444 55 66',
+            'Hesap Kodu': '120.002',
+            'Maliyet Merkezi': 'Ana'
+        }
+    ];
+    
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Müşteriler');
+    
+    // Electron'da dosya indirme için alternatif yöntem
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    
+    // Dosya indirme linki oluştur
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'musteri_import_sablonu.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    showNotification('✅ Müşteri Excel şablonu indirildi!', 'success');
+}
+
+// Müşteri Excel dosyası seçildiğinde
+function handleCustomerExcelFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            if (jsonData.length < 2) {
+                showNotification('❌ Excel dosyası boş veya geçersiz!', 'error');
+                return;
+            }
+            
+            const headers = jsonData[0];
+            const rows = jsonData.slice(1);
+            
+            // Veriyi işle ve önizleme göster
+            processCustomerExcelData(headers, rows);
+            
+        } catch (error) {
+            console.error('Excel okuma hatası:', error);
+            showNotification('❌ Excel dosyası okunamadı!', 'error');
+        }
+    };
+    
+    reader.readAsArrayBuffer(file);
+}
+
+// Müşteri Excel verilerini işle ve önizleme göster
+async function processCustomerExcelData(headers, rows) {
+    const previewTable = document.getElementById('customer-excel-preview-table');
+    const validCount = document.getElementById('customer-valid-count');
+    const errorCount = document.getElementById('customer-error-count');
+    const previewSection = document.getElementById('customer-excel-preview-section');
+    
+    let validRows = 0;
+    let errorRows = 0;
+    
+    // Sütun indekslerini bul
+    const columnIndexes = {
+        name: headers.findIndex(h => h && h.toString().toLowerCase().includes('müşteri adı')),
+        code: headers.findIndex(h => h && h.toString().toLowerCase().includes('müşteri kodu')),
+        phone: headers.findIndex(h => h && h.toString().toLowerCase().includes('telefon')),
+        gsm: headers.findIndex(h => h && h.toString().toLowerCase().includes('gsm')),
+        address: headers.findIndex(h => h && h.toString().toLowerCase().includes('adres')),
+        credit_limit: headers.findIndex(h => h && h.toString().toLowerCase().includes('kredi limiti')),
+        tax_office: headers.findIndex(h => h && h.toString().toLowerCase().includes('vergi dairesi')),
+        tax_number: headers.findIndex(h => h && h.toString().toLowerCase().includes('vergi numarası')),
+        tc_number: headers.findIndex(h => h && h.toString().toLowerCase().includes('tc numarası')),
+        email: headers.findIndex(h => h && h.toString().toLowerCase().includes('e-posta')),
+        website: headers.findIndex(h => h && h.toString().toLowerCase().includes('web sitesi')),
+        customer_type: headers.findIndex(h => h && h.toString().toLowerCase().includes('müşteri tipi')),
+        invoice_address: headers.findIndex(h => h && h.toString().toLowerCase().includes('fatura adresi')),
+        invoice_city: headers.findIndex(h => h && h.toString().toLowerCase().includes('fatura şehri')),
+        invoice_district: headers.findIndex(h => h && h.toString().toLowerCase().includes('fatura ilçesi')),
+        invoice_postal_code: headers.findIndex(h => h && h.toString().toLowerCase().includes('posta kodu')),
+        contact_person: headers.findIndex(h => h && h.toString().toLowerCase().includes('yetkili kişi')),
+        contact_phone: headers.findIndex(h => h && h.toString().toLowerCase().includes('yetkili telefon')),
+        account_code: headers.findIndex(h => h && h.toString().toLowerCase().includes('hesap kodu')),
+        cost_center: headers.findIndex(h => h && h.toString().toLowerCase().includes('maliyet merkezi'))
+    };
+    
+    // Tablo HTML'ini oluştur
+    let tableHtml = `
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <thead style="background: #f8f9fa; position: sticky; top: 0;">
+                <tr>
+                    ${headers.map(h => `<th style="padding: 8px; border: 1px solid #e5e7eb; text-align: left; font-weight: 600;">${h || ''}</th>`).join('')}
+                    <th style="padding: 8px; border: 1px solid #e5e7eb; text-align: center; font-weight: 600;">Durum</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    // Satırları işle
+    rows.forEach((row, index) => {
+        if (!row || row.every(cell => !cell)) return; // Boş satırları atla
+        
+        const errors = validateCustomerRow(row, columnIndexes);
+        const isValid = errors.length === 0;
+        
+        if (isValid) validRows++;
+        else errorRows++;
+        
+        const rowStyle = isValid ? '' : 'background: #fee2e2; color: #dc2626;';
+        
+        tableHtml += `
+            <tr style="${rowStyle}">
+                ${row.map(cell => `<td style="padding: 8px; border: 1px solid #e5e7eb;">${cell || ''}</td>`).join('')}
+                <td style="padding: 8px; border: 1px solid #e5e7eb; text-align: center;">
+                    ${isValid ? '✅' : `❌ ${errors.join(', ')}`}
+                </td>
+            </tr>
+        `;
+    });
+    
+    tableHtml += '</tbody></table>';
+    
+    previewTable.innerHTML = tableHtml;
+    validCount.textContent = validRows;
+    errorCount.textContent = errorRows;
+    previewSection.style.display = 'block';
+    
+    // Global değişkenlere kaydet
+    window.customerExcelData = { headers, rows, columnIndexes };
+}
+
+// Müşteri satırını doğrula
+function validateCustomerRow(row, columnIndexes) {
+    const errors = [];
+    
+    // Müşteri adı zorunlu
+    if (columnIndexes.name >= 0 && (!row[columnIndexes.name] || row[columnIndexes.name].toString().trim() === '')) {
+        errors.push('Müşteri adı boş');
+    }
+    
+    // Kredi limiti kontrolü
+    if (columnIndexes.credit_limit >= 0 && row[columnIndexes.credit_limit]) {
+        const creditLimit = row[columnIndexes.credit_limit];
+        if (isNaN(parseFloat(creditLimit)) || parseFloat(creditLimit) < 0) {
+            errors.push('Geçersiz kredi limiti');
+        }
+    }
+    
+    // E-posta kontrolü
+    if (columnIndexes.email >= 0 && row[columnIndexes.email]) {
+        const email = row[columnIndexes.email].toString().trim();
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            errors.push('Geçersiz e-posta');
+        }
+    }
+    
+    return errors;
+}
+
+// Excel'den müşterileri import et
+async function importCustomersFromExcel() {
+    if (!window.customerExcelData) {
+        showNotification('❌ Önce Excel dosyasını seçin!', 'error');
+        return;
+    }
+    
+    const { headers, rows, columnIndexes } = window.customerExcelData;
+    let successCount = 0;
+    let errorCount = 0;
+    
+    try {
+        for (const [index, row] of rows.entries()) {
+            if (!row || row.every(cell => !cell)) continue; // Boş satırları atla
+            
+            const errors = validateCustomerRow(row, columnIndexes);
+            if (errors.length > 0) {
+                errorCount++;
+                continue;
+            }
+            
+            try {
+                const customerData = {
+                    name: row[columnIndexes.name]?.toString().trim() || '',
+                    code: columnIndexes.code >= 0 ? row[columnIndexes.code]?.toString().trim() || null : null,
+                    phone: columnIndexes.phone >= 0 ? row[columnIndexes.phone]?.toString().trim() || null : null,
+                    gsm: columnIndexes.gsm >= 0 ? row[columnIndexes.gsm]?.toString().trim() || null : null,
+                    address: columnIndexes.address >= 0 ? row[columnIndexes.address]?.toString().trim() || null : null,
+                    credit_limit: columnIndexes.credit_limit >= 0 ? parseFloat(row[columnIndexes.credit_limit]) || 500 : 500,
+                    tax_office: columnIndexes.tax_office >= 0 ? row[columnIndexes.tax_office]?.toString().trim() || null : null,
+                    tax_number: columnIndexes.tax_number >= 0 ? row[columnIndexes.tax_number]?.toString().trim() || null : null,
+                    tc_number: columnIndexes.tc_number >= 0 ? row[columnIndexes.tc_number]?.toString().trim() || null : null,
+                    email: columnIndexes.email >= 0 ? row[columnIndexes.email]?.toString().trim() || null : null,
+                    website: columnIndexes.website >= 0 ? row[columnIndexes.website]?.toString().trim() || null : null,
+                    customer_type: columnIndexes.customer_type >= 0 ? (row[columnIndexes.customer_type]?.toString().trim() || 'individual') : 'individual',
+                    invoice_address: columnIndexes.invoice_address >= 0 ? row[columnIndexes.invoice_address]?.toString().trim() || null : null,
+                    invoice_city: columnIndexes.invoice_city >= 0 ? row[columnIndexes.invoice_city]?.toString().trim() || null : null,
+                    invoice_district: columnIndexes.invoice_district >= 0 ? row[columnIndexes.invoice_district]?.toString().trim() || null : null,
+                    invoice_postal_code: columnIndexes.invoice_postal_code >= 0 ? row[columnIndexes.invoice_postal_code]?.toString().trim() || null : null,
+                    contact_person: columnIndexes.contact_person >= 0 ? row[columnIndexes.contact_person]?.toString().trim() || null : null,
+                    contact_phone: columnIndexes.contact_phone >= 0 ? row[columnIndexes.contact_phone]?.toString().trim() || null : null,
+                    account_code: columnIndexes.account_code >= 0 ? row[columnIndexes.account_code]?.toString().trim() || null : null,
+                    cost_center: columnIndexes.cost_center >= 0 ? row[columnIndexes.cost_center]?.toString().trim() || null : null
+                };
+                
+                await ipcRenderer.invoke('add-customer', customerData);
+                successCount++;
+                console.log(`Müşteri eklendi: ${customerData.name}`);
+                
+            } catch (error) {
+                console.error(`Satır ${index + 2} hatası:`, error);
+                errorCount++;
+            }
+        }
+        
+        // Sonuç mesajı
+        if (successCount > 0) {
+            showNotification(`✅ ${successCount} müşteri başarıyla yüklendi!`, 'success');
+            
+            // Müşteri listesini güncelle
+            if (typeof loadCustomers === 'function') {
+                await loadCustomers();
+            }
+            
+            // Modal'ı kapat
+            closeExcelCustomerImportModal();
+        }
+        
+        if (errorCount > 0) {
+            showNotification(`⚠️ ${errorCount} müşteri yüklenemedi!`, 'warning');
+        }
+        
+    } catch (error) {
+        console.error('Import hatası:', error);
+        showNotification('❌ Müşteri yükleme sırasında hata oluştu!', 'error');
+    }
+}
+
+// Müşteri import modal'ı kapat
+function closeExcelCustomerImportModal() {
+    const modal = document.getElementById('excel-customer-import-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
 // Global fonksiyonları window'a ekle
 window.showExcelImportModal = showExcelImportModal;
 window.downloadExcelTemplate = downloadExcelTemplate;
 window.handleExcelFileSelect = handleExcelFileSelect;
 window.importProductsFromExcel = importProductsFromExcel;
 window.closeExcelImportModal = closeExcelImportModal;
+
+// Müşteri import fonksiyonları
+window.showExcelCustomerImportModal = showExcelCustomerImportModal;
+window.downloadCustomerExcelTemplate = downloadCustomerExcelTemplate;
+window.handleCustomerExcelFileSelect = handleCustomerExcelFileSelect;
+window.importCustomersFromExcel = importCustomersFromExcel;
+window.closeExcelCustomerImportModal = closeExcelCustomerImportModal;
