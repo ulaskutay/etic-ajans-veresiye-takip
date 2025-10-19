@@ -139,9 +139,10 @@ function createModernProductModal() {
 }
 
 // Basit ürün listesi
-function createSimpleProductsList() {
-    console.log('createSimpleProductsList çağrıldı, products array:', products);
-    if (!products || products.length === 0) {
+function createSimpleProductsList(productsToShow = null) {
+    const productsToDisplay = productsToShow || products;
+    console.log('createSimpleProductsList çağrıldı, products array:', productsToDisplay);
+    if (!productsToDisplay || productsToDisplay.length === 0) {
         return `
             <div style="text-align: center; padding: 60px 20px; background: white; border-radius: 12px;">
                 <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;">📦</div>
@@ -165,7 +166,7 @@ function createSimpleProductsList() {
                     </tr>
                 </thead>
                 <tbody>
-                    ${products.map(product => createSimpleProductRow(product)).join('')}
+                    ${productsToDisplay.map(product => createSimpleProductRow(product)).join('')}
                 </tbody>
             </table>
         </div>
@@ -237,14 +238,19 @@ function handleProductModalKeydown(event) {
         
         console.log(`ESC ile modal kapatılıyor: ${modalId}`);
         
-        // Eğer ana ürün yönetimi modalıysa, sadece onu kapat
-        if (modalId === 'product-management-modal') {
+        // Alt modalları kontrol et (kategori, marka, ürün ekleme, vs.)
+        const subModals = ['categories-modal', 'brands-modal', 'add-product-modal', 'edit-product-modal', 'add-category-modal', 'add-brand-modal', 'edit-category-modal', 'edit-brand-modal', 'quick-add-category-from-product-modal', 'quick-add-brand-from-product-modal'];
+        
+        if (subModals.includes(modalId)) {
+            // Alt modalları kapat
+            closeProductModal(modalId);
+            console.log(`Alt modal kapatıldı: ${modalId}`);
+        } else if (modalId === 'product-management-modal') {
+            // Ana ürün yönetimi modalını kapat
             closeProductModal(modalId);
             // ESC event listener'ını kaldır
             document.removeEventListener('keydown', handleProductModalKeydown);
-        } else {
-            // Diğer modalları kapat (kategori, marka, vs.)
-            closeProductModal(modalId);
+            console.log('Ana ürün modalı kapatıldı, ESC listener kaldırıldı');
         }
         
         event.preventDefault();
@@ -258,9 +264,32 @@ function filterProductsList() {
     const categoryId = document.getElementById('category-filter-select')?.value || '';
     const brandId = document.getElementById('brand-filter-select')?.value || '';
     
-    // Burada filtreleme yapıp grid'i güncelleyebiliriz
-    // Şimdilik basit tutalım
     console.log('Filtering:', { search, categoryId, brandId });
+    
+    // Ürünleri filtrele
+    let filteredProducts = products.filter(product => {
+        // Arama metni kontrolü
+        const matchesSearch = !search || 
+            product.name.toLowerCase().includes(search) ||
+            (product.code && product.code.toLowerCase().includes(search)) ||
+            (product.barcode && product.barcode.toLowerCase().includes(search));
+        
+        // Kategori kontrolü
+        const matchesCategory = !categoryId || product.category_id == categoryId;
+        
+        // Marka kontrolü
+        const matchesBrand = !brandId || product.brand_id == brandId;
+        
+        return matchesSearch && matchesCategory && matchesBrand;
+    });
+    
+    // Filtrelenmiş ürünleri göster
+    const container = document.getElementById('products-list-container');
+    if (container) {
+        container.innerHTML = createSimpleProductsList(filteredProducts);
+    }
+    
+    console.log(`Filtrelenmiş ürün sayısı: ${filteredProducts.length}`);
 }
 
 // Placeholder fonksiyonlar
@@ -451,6 +480,7 @@ async function handleAddProduct(event) {
         }
         
         // Satış ekranındaki ürün seçimini güncelle
+        console.log('Yeni ürün eklendi, satış ekranı güncelleniyor:', newProduct);
         updateSaleProductSelect(newProduct);
         
     } catch (error) {
@@ -1021,7 +1051,7 @@ async function handleEditBrand(event, brandId) {
 // Ürün ekleme formundan hızlı kategori ekleme
 function showQuickAddCategoryFromProduct() {
     const modalHtml = `
-        <div id="quick-add-category-from-product-modal" class="modal active" style="z-index: 1003;">
+        <div id="quick-add-category-from-product-modal" class="modal active" style="z-index: 10000;">
             <div class="modal-content" style="max-width: 400px;">
                 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 16px; border-radius: 12px 12px 0 0; color: white;">
                     <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Hızlı Kategori Ekle</h3>
@@ -1095,7 +1125,7 @@ async function handleQuickAddCategoryFromProduct(event) {
 // Ürün ekleme formundan hızlı marka ekleme
 function showQuickAddBrandFromProduct() {
     const modalHtml = `
-        <div id="quick-add-brand-from-product-modal" class="modal active" style="z-index: 1003;">
+        <div id="quick-add-brand-from-product-modal" class="modal active" style="z-index: 10000;">
             <div class="modal-content" style="max-width: 400px;">
                 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 16px; border-radius: 12px 12px 0 0; color: white;">
                     <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Hızlı Marka Ekle</h3>
@@ -1201,6 +1231,7 @@ function showProductModalFromSale() {
 function updateSaleProductSelect(newProduct) {
     const saleProductSelect = document.getElementById('sale-product');
     if (saleProductSelect) {
+        console.log('Satış ürün select bulundu, yeni ürün ekleniyor:', newProduct);
         // Yeni ürünü seçeneklere ekle
         const newOption = document.createElement('option');
         newOption.value = newProduct.id;
@@ -1209,6 +1240,7 @@ function updateSaleProductSelect(newProduct) {
         
         // Yeni eklenen ürünü seç
         saleProductSelect.value = newProduct.id;
+        console.log('Yeni ürün seçildi:', saleProductSelect.value);
         
         // Eğer renderer.js'de loadProductsForSale fonksiyonu varsa çağır
         if (typeof loadProductsForSale === 'function') {

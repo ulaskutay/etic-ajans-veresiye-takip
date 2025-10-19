@@ -11,8 +11,9 @@ let brands = []; // Markalar listesi
 let selectedCustomerId = null; // Seçili müşteri ID'si
 
 // Sayfa yüklendiğinde
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     loadCustomers();
+    await loadCompanySettings();
     setupEventListeners();
     setDefaultDates();
     
@@ -1339,11 +1340,30 @@ function handleEscapeKey(e) {
             return;
         }
         
-        // Diğer modal'lar için genel kapatma
+        // Ürün modülü ile ilgili tüm modal'ları kontrol et
+        const productRelatedModals = [
+            'product-management-modal', 'categories-modal', 'brands-modal', 
+            'add-product-modal', 'edit-product-modal', 'add-category-modal', 
+            'add-brand-modal', 'edit-category-modal', 'edit-brand-modal',
+            'quick-add-category-from-product-modal', 'quick-add-brand-from-product-modal'
+        ];
+        
+        // Herhangi bir ürün modülü modal'ı açıksa, renderer.js ESC'yi hiç işlemesin
         const activeModals = document.querySelectorAll('.modal.active');
+        for (let modal of activeModals) {
+            if (productRelatedModals.includes(modal.id)) {
+                // Ürün modülü modal'ları product-module.js tarafından yönetiliyor
+                // Bu fonksiyon hiçbir şey yapmasın
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+        }
+        
+        // Diğer modal'lar için genel kapatma
         activeModals.forEach(modal => {
             const modalId = modal.id;
-            if (modalId) {
+            if (modalId && !productRelatedModals.includes(modalId)) {
                 closeModal(modalId);
             }
         });
@@ -4211,10 +4231,20 @@ async function showSettingsModal() {
                                     </div>
                                     
                                     <div style="margin-bottom: 15px;">
-                                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Logo Yolu</label>
-                                        <input type="text" id="logo_path" name="logo_path" value="${companySettings.logo_path || ''}" 
-                                               style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" 
-                                               placeholder="C:\\path\\to\\logo.png">
+                                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Logo Seç</label>
+                                        <div style="display: flex; gap: 10px; align-items: center;">
+                                            <input type="file" id="logo_file" name="logo_file" accept="image/*" 
+                                                   style="flex: 1; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" 
+                                                   onchange="handleLogoFileSelect(event)">
+                                            <button type="button" onclick="document.getElementById('logo_file').click()" 
+                                                    style="padding: 10px 15px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px;">
+                                                📁 Seç
+                                            </button>
+                                        </div>
+                                        <input type="hidden" id="logo_path" name="logo_path" value="${companySettings.logo_path || ''}">
+                                        <div id="logo_preview" style="margin-top: 10px; text-align: center;">
+                                            ${companySettings.logo_path ? `<img src="${companySettings.logo_path}" style="max-width: 100px; max-height: 100px; border-radius: 8px; border: 2px solid #e5e7eb;" alt="Logo Preview">` : '<p style="color: #9ca3af; font-size: 12px;">Logo seçilmedi</p>'}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -4297,6 +4327,62 @@ async function showSettingsModal() {
     }
 }
 
+// Logo dosya seçimi
+function handleLogoFileSelect(event) {
+    const file = event.target.files[0];
+    if (file) {
+        // Dosya tipini kontrol et
+        if (!file.type.startsWith('image/')) {
+            showNotification('Lütfen geçerli bir resim dosyası seçin', 'error');
+            return;
+        }
+        
+        // Dosya boyutunu kontrol et (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            showNotification('Dosya boyutu 5MB\'dan küçük olmalıdır', 'error');
+            return;
+        }
+        
+        // FileReader ile dosyayı oku
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            // Logo preview'ı güncelle
+            const preview = document.getElementById('logo_preview');
+            preview.innerHTML = `<img src="${e.target.result}" style="max-width: 100px; max-height: 100px; border-radius: 8px; border: 2px solid #e5e7eb;" alt="Logo Preview">`;
+            
+            // Base64 verisini hidden input'a kaydet
+            document.getElementById('logo_path').value = e.target.result;
+            
+            showNotification('Logo başarıyla seçildi', 'success');
+        };
+        
+        reader.readAsDataURL(file);
+    }
+}
+
+// Firma ayarlarını yükle ve header'da göster
+async function loadCompanySettings() {
+    try {
+        const companySettings = await ipcRenderer.invoke('get-company-settings');
+        
+        // Firma adını güncelle
+        const companyNameElement = document.getElementById('company-name');
+        if (companyNameElement && companySettings.company_name) {
+            companyNameElement.textContent = companySettings.company_name;
+        }
+        
+        // Logoyu güncelle
+        const logoElement = document.getElementById('company-logo');
+        if (logoElement && companySettings.logo_path) {
+            logoElement.innerHTML = `<img src="${companySettings.logo_path}" style="width: 100%; height: 100%; object-fit: contain; border-radius: 6px;" alt="Company Logo">`;
+        }
+        
+        console.log('Company settings loaded:', companySettings.company_name);
+    } catch (error) {
+        console.error('Load company settings error:', error);
+    }
+}
+
 // Firma ayarlarını kaydet
 async function saveCompanySettings(event) {
     event.preventDefault();
@@ -4326,6 +4412,8 @@ async function saveCompanySettings(event) {
         if (result.success) {
             showNotification('✅ Firma ayarları başarıyla kaydedildi', 'success');
             closeModal('settings-modal');
+            // Header'ı güncelle
+            await loadCompanySettings();
         } else {
             showNotification('❌ Ayarlar kaydedilirken hata oluştu', 'error');
         }
