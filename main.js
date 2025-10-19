@@ -155,6 +155,62 @@ async function initDatabase() {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+            
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                icon TEXT DEFAULT '📦',
+                color TEXT DEFAULT '#667eea',
+                description TEXT,
+                sort_order INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            CREATE TABLE IF NOT EXISTS brands (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                logo TEXT DEFAULT '🏷️',
+                description TEXT,
+                website TEXT,
+                is_active INTEGER DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            CREATE TABLE IF NOT EXISTS alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
+                alert_type TEXT NOT NULL, -- 'stock', 'debt', 'payment', 'custom'
+                condition_type TEXT NOT NULL, -- 'less_than', 'greater_than', 'equals', 'contains'
+                condition_value TEXT NOT NULL,
+                condition_field TEXT NOT NULL, -- 'stock', 'balance', 'amount', 'unit', etc.
+                target_type TEXT NOT NULL, -- 'product', 'customer', 'transaction', 'all'
+                target_id INTEGER, -- specific product/customer ID, NULL for all
+                unit TEXT, -- 'adet', 'metre', 'ton', 'dolar', etc.
+                currency TEXT DEFAULT 'TRY',
+                is_active INTEGER DEFAULT 1,
+                priority TEXT DEFAULT 'medium', -- 'low', 'medium', 'high', 'critical'
+                notification_method TEXT DEFAULT 'popup', -- 'popup', 'email', 'both'
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            CREATE TABLE IF NOT EXISTS alert_triggers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                alert_id INTEGER NOT NULL,
+                triggered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                trigger_value TEXT NOT NULL,
+                target_id INTEGER,
+                target_name TEXT,
+                is_resolved INTEGER DEFAULT 0,
+                resolved_at DATETIME,
+                resolved_by TEXT,
+                notes TEXT,
+                FOREIGN KEY (alert_id) REFERENCES alerts (id)
+            );
         `);
         
         // Mevcut products tablosuna yeni sütunları ekle (eğer yoksa)
@@ -186,7 +242,7 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false,
-            devTools: false
+            devTools: true
         },
         show: false
     });
@@ -893,7 +949,293 @@ function setupIpcHandlers() {
         }
     });
     
+    // Alert System IPC Handlers
+    ipcMain.handle('get-alerts', () => {
+        try {
+            const stmt = db.prepare('SELECT * FROM alerts WHERE is_active = 1 ORDER BY priority DESC, created_at DESC');
+            return stmt.all();
+        } catch (error) {
+            console.error('Get alerts error:', error);
+            return [];
+        }
+    });
+
+    ipcMain.handle('add-alert', (event, alert) => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+            console.log('Adding alert:', alert);
+            const stmt = db.prepare(`
+                INSERT INTO alerts (
+                    name, description, alert_type, condition_type, condition_value,
+                    condition_field, target_type, target_id, unit, currency,
+                    priority, notification_method
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            const result = stmt.run(
+                alert.name,
+                alert.description || null,
+                alert.alert_type,
+                alert.condition_type,
+                alert.condition_value,
+                alert.condition_field,
+                alert.target_type,
+                alert.target_id || null,
+                alert.unit || null,
+                alert.currency || 'TRY',
+                alert.priority || 'medium',
+                alert.notification_method || 'popup'
+            );
+            console.log('Alert added successfully, ID:', result.lastInsertRowid);
+            return { id: result.lastInsertRowid, ...alert };
+        } catch (error) {
+            console.error('Add alert error:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('update-alert', (event, alert) => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+            console.log('Updating alert:', alert);
+            const stmt = db.prepare(`
+                UPDATE alerts SET 
+                    name = ?, description = ?, alert_type = ?, condition_type = ?,
+                    condition_value = ?, condition_field = ?, target_type = ?,
+                    target_id = ?, unit = ?, currency = ?, priority = ?,
+                    notification_method = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `);
+            const result = stmt.run(
+                alert.name,
+                alert.description || null,
+                alert.alert_type,
+                alert.condition_type,
+                alert.condition_value,
+                alert.condition_field,
+                alert.target_type,
+                alert.target_id || null,
+                alert.unit || null,
+                alert.currency || 'TRY',
+                alert.priority || 'medium',
+                alert.notification_method || 'popup',
+                alert.id
+            );
+            console.log('Alert updated successfully, affected rows:', result.changes);
+            return { id: alert.id, ...alert };
+        } catch (error) {
+            console.error('Update alert error:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('delete-alert', (event, id) => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+            console.log('Deleting alert:', id);
+            const stmt = db.prepare('UPDATE alerts SET is_active = 0 WHERE id = ?');
+            const result = stmt.run(id);
+            console.log('Alert deleted successfully, affected rows:', result.changes);
+            return { success: true, affectedRows: result.changes };
+        } catch (error) {
+            console.error('Delete alert error:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('get-alert-triggers', (event, alertId = null) => {
+        try {
+            let query = `
+                SELECT at.*, a.name as alert_name, a.alert_type, a.priority
+                FROM alert_triggers at
+                LEFT JOIN alerts a ON at.alert_id = a.id
+            `;
+            let params = [];
+            
+            if (alertId) {
+                query += ' WHERE at.alert_id = ?';
+                params.push(alertId);
+            }
+            
+            query += ' ORDER BY at.triggered_at DESC LIMIT 100';
+            
+            const stmt = db.prepare(query);
+            return stmt.all(...params);
+        } catch (error) {
+            console.error('Get alert triggers error:', error);
+            return [];
+        }
+    });
+
+    ipcMain.handle('add-alert-trigger', (event, trigger) => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+            console.log('Adding alert trigger:', trigger);
+            const stmt = db.prepare(`
+                INSERT INTO alert_triggers (
+                    alert_id, trigger_value, target_id, target_name, notes
+                ) VALUES (?, ?, ?, ?, ?)
+            `);
+            const result = stmt.run(
+                trigger.alert_id,
+                trigger.trigger_value,
+                trigger.target_id || null,
+                trigger.target_name || null,
+                trigger.notes || null
+            );
+            console.log('Alert trigger added successfully, ID:', result.lastInsertRowid);
+            return { id: result.lastInsertRowid, ...trigger };
+        } catch (error) {
+            console.error('Add alert trigger error:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('resolve-alert-trigger', (event, triggerId, resolvedBy = 'system') => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+            console.log('Resolving alert trigger:', triggerId);
+            const stmt = db.prepare(`
+                UPDATE alert_triggers SET 
+                    is_resolved = 1, resolved_at = CURRENT_TIMESTAMP, resolved_by = ?
+                WHERE id = ?
+            `);
+            const result = stmt.run(resolvedBy, triggerId);
+            console.log('Alert trigger resolved successfully, affected rows:', result.changes);
+            return { success: true, affectedRows: result.changes };
+        } catch (error) {
+            console.error('Resolve alert trigger error:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('check-alerts', () => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+            
+            const alerts = db.prepare('SELECT * FROM alerts WHERE is_active = 1').all();
+            const triggeredAlerts = [];
+            
+            for (const alert of alerts) {
+                let shouldTrigger = false;
+                let triggerValue = '';
+                let targetName = '';
+                
+                switch (alert.alert_type) {
+                    case 'stock':
+                        if (alert.target_type === 'product' && alert.target_id) {
+                            const product = db.prepare('SELECT * FROM products WHERE id = ?').get(alert.target_id);
+                            if (product) {
+                                triggerValue = product.stock.toString();
+                                targetName = product.name;
+                                shouldTrigger = checkCondition(product.stock, alert.condition_type, alert.condition_value);
+                            }
+                        } else if (alert.target_type === 'all') {
+                            const products = db.prepare('SELECT * FROM products WHERE is_active = 1').all();
+                            for (const product of products) {
+                                if (checkCondition(product.stock, alert.condition_type, alert.condition_value)) {
+                                    triggeredAlerts.push({
+                                        alert_id: alert.id,
+                                        trigger_value: product.stock.toString(),
+                                        target_id: product.id,
+                                        target_name: product.name,
+                                        notes: `Stok uyarısı: ${product.name}`
+                                    });
+                                }
+                            }
+                            continue;
+                        }
+                        break;
+                        
+                    case 'debt':
+                        if (alert.target_type === 'customer' && alert.target_id) {
+                            const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(alert.target_id);
+                            if (customer) {
+                                triggerValue = customer.balance.toString();
+                                targetName = customer.name;
+                                shouldTrigger = checkCondition(customer.balance, alert.condition_type, alert.condition_value);
+                            }
+                        } else if (alert.target_type === 'all') {
+                            const customers = db.prepare('SELECT * FROM customers').all();
+                            for (const customer of customers) {
+                                if (checkCondition(customer.balance, alert.condition_type, alert.condition_value)) {
+                                    triggeredAlerts.push({
+                                        alert_id: alert.id,
+                                        trigger_value: customer.balance.toString(),
+                                        target_id: customer.id,
+                                        target_name: customer.name,
+                                        notes: `Borç uyarısı: ${customer.name}`
+                                    });
+                                }
+                            }
+                            continue;
+                        }
+                        break;
+                }
+                
+                if (shouldTrigger) {
+                    triggeredAlerts.push({
+                        alert_id: alert.id,
+                        trigger_value: triggerValue,
+                        target_id: alert.target_id,
+                        target_name: targetName,
+                        notes: `${alert.alert_type} uyarısı tetiklendi`
+                    });
+                }
+            }
+            
+            // Triggered alerts'leri veritabanına kaydet
+            for (const trigger of triggeredAlerts) {
+                try {
+                    db.prepare(`
+                        INSERT INTO alert_triggers (alert_id, trigger_value, target_id, target_name, notes)
+                        VALUES (?, ?, ?, ?, ?)
+                    `).run(trigger.alert_id, trigger.trigger_value, trigger.target_id, trigger.target_name, trigger.notes);
+                } catch (err) {
+                    console.error('Error saving alert trigger:', err);
+                }
+            }
+            
+            return triggeredAlerts;
+        } catch (error) {
+            console.error('Check alerts error:', error);
+            return [];
+        }
+    });
+
     console.log('IPC handlers setup complete');
+}
+
+// Helper function to check alert conditions
+function checkCondition(value, conditionType, conditionValue) {
+    const numValue = parseFloat(value);
+    const numCondition = parseFloat(conditionValue);
+    
+    switch (conditionType) {
+        case 'less_than':
+            return numValue < numCondition;
+        case 'greater_than':
+            return numValue > numCondition;
+        case 'equals':
+            return numValue === numCondition;
+        case 'less_than_or_equal':
+            return numValue <= numCondition;
+        case 'greater_than_or_equal':
+            return numValue >= numCondition;
+        default:
+            return false;
+    }
 }
 
 // App event handlers

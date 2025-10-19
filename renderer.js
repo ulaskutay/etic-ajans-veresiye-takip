@@ -17,6 +17,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
     setDefaultDates();
     
+    // Uyarı sistemi başlat
+    initializeAlertSystem();
+    
     // IPC listener for global shortcuts
     const { ipcRenderer } = require('electron');
     
@@ -2315,8 +2318,8 @@ function showNotification(message, type = 'info') {
 }
 
 // CSS animations
-const style = document.createElement('style');
-style.textContent = `
+const notificationStyle = document.createElement('style');
+notificationStyle.textContent = `
     @keyframes slideIn {
         from {
             transform: translateX(100%);
@@ -2339,7 +2342,7 @@ style.textContent = `
         }
     }
 `;
-document.head.appendChild(style);
+document.head.appendChild(notificationStyle);
 
 // Keyboard shortcuts handler
 function handleKeyboardShortcuts(e) {
@@ -6329,6 +6332,153 @@ function printProductReport() {
         showNotification('Yazdırma sırasında hata oluştu', 'error');
     }
 }
+
+// Uyarı sistemi başlatma
+function initializeAlertSystem() {
+    console.log('Alert system initialized');
+    
+    // Her 5 dakikada bir uyarıları kontrol et
+    setInterval(async () => {
+        try {
+            const triggeredAlerts = await ipcRenderer.invoke('check-alerts');
+            if (triggeredAlerts.length > 0) {
+                showAlertNotifications(triggeredAlerts);
+            }
+        } catch (error) {
+            console.error('Alert check error:', error);
+        }
+    }, 5 * 60 * 1000); // 5 dakika
+    
+    // Sayfa yüklendiğinde de kontrol et
+    setTimeout(async () => {
+        try {
+            const triggeredAlerts = await ipcRenderer.invoke('check-alerts');
+            if (triggeredAlerts.length > 0) {
+                showAlertNotifications(triggeredAlerts);
+            }
+        } catch (error) {
+            console.error('Initial alert check error:', error);
+        }
+    }, 2000); // 2 saniye sonra
+}
+
+// Uyarı bildirimlerini göster
+function showAlertNotifications(triggeredAlerts) {
+    triggeredAlerts.forEach(alert => {
+        showAlertNotification(alert);
+    });
+}
+
+// Tekil uyarı bildirimi göster
+function showAlertNotification(alert) {
+    const notification = document.createElement('div');
+    notification.className = 'alert-notification';
+    notification.style.cssText = `
+        position: fixed; 
+        top: 20px; 
+        right: 20px; 
+        z-index: 99999;
+        padding: 16px 20px; 
+        border-radius: 12px; 
+        color: white;
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        font-size: 14px; 
+        font-weight: 500; 
+        box-shadow: 0 8px 25px rgba(239, 68, 68, 0.3);
+        border-left: 4px solid #fca5a5;
+        max-width: 400px;
+        animation: slideInRight 0.3s ease-out;
+    `;
+    
+    const priorityColors = {
+        'low': 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+        'medium': 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+        'high': 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+        'critical': 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)'
+    };
+    
+    notification.style.background = priorityColors[alert.priority] || priorityColors['medium'];
+    
+    const alertTypeIcons = {
+        'stock': '📦',
+        'debt': '💰',
+        'payment': '💳',
+        'custom': '⚙️'
+    };
+    
+    notification.innerHTML = `
+        <div style="display: flex; align-items: flex-start; gap: 12px;">
+            <div style="font-size: 24px; margin-top: 2px;">
+                ${alertTypeIcons[alert.alert_type] || '🚨'}
+            </div>
+            <div style="flex: 1;">
+                <div style="font-weight: 600; margin-bottom: 4px; font-size: 16px;">
+                    ${alert.alert_name || 'Uyarı'}
+                </div>
+                <div style="font-size: 13px; opacity: 0.9; margin-bottom: 8px;">
+                    ${alert.target_name ? `Hedef: ${alert.target_name}` : ''}
+                </div>
+                <div style="font-size: 12px; opacity: 0.8;">
+                    Değer: <strong>${alert.trigger_value}</strong>
+                </div>
+                <div style="margin-top: 8px; display: flex; gap: 8px;">
+                    <button onclick="this.parentElement.parentElement.parentElement.remove()" 
+                            style="padding: 4px 8px; background: rgba(255,255,255,0.2); border: none; border-radius: 4px; color: white; font-size: 11px; cursor: pointer;">
+                        Kapat
+                    </button>
+                    <button onclick="showAlertManagement(); this.parentElement.parentElement.parentElement.remove()" 
+                            style="padding: 4px 8px; background: rgba(255,255,255,0.3); border: none; border-radius: 4px; color: white; font-size: 11px; cursor: pointer;">
+                        Detaylar
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // 10 saniye sonra otomatik kapat
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.style.animation = 'slideOutRight 0.3s ease-in';
+            setTimeout(() => {
+                notification.remove();
+            }, 300);
+        }
+    }, 10000);
+}
+
+// CSS animasyonları ekle
+const alertStyle = document.createElement('style');
+alertStyle.textContent = `
+    @keyframes slideInRight {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+    
+    @keyframes slideOutRight {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        to {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+    }
+    
+    .alert-notification:hover {
+        transform: translateX(-5px);
+        transition: transform 0.2s ease;
+    }
+`;
+document.head.appendChild(alertStyle);
 
 // App quit function
 window.app = {
