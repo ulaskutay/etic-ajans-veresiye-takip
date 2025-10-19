@@ -6,9 +6,9 @@ async function showProductManagement() {
     try {
         // Verileri yükle
         await Promise.all([
-            loadCategories(),
-            loadBrands(),
-            loadProducts()
+            loadCategoriesData(),
+            loadBrandsData(),
+            loadProductsData()
         ]);
         
         // Eski modalı kaldır
@@ -32,7 +32,7 @@ async function showProductManagement() {
 }
 
 // Verileri yükle
-async function loadCategories() {
+async function loadCategoriesData() {
     try {
         categories = await ipcRenderer.invoke('get-categories');
     } catch (error) {
@@ -41,7 +41,7 @@ async function loadCategories() {
     }
 }
 
-async function loadBrands() {
+async function loadBrandsData() {
     try {
         brands = await ipcRenderer.invoke('get-brands');
     } catch (error) {
@@ -50,7 +50,7 @@ async function loadBrands() {
     }
 }
 
-async function loadProducts() {
+async function loadProductsData() {
     try {
         products = await ipcRenderer.invoke('get-products');
     } catch (error) {
@@ -755,7 +755,7 @@ async function handleEditProduct(event, id) {
         await ipcRenderer.invoke('update-product', { id, ...productData });
         
         // Veritabanından taze veri çek
-        await loadProducts();
+        await loadProductsData();
         
         showNotification('Ürün başarıyla güncellendi', 'success');
         
@@ -782,7 +782,7 @@ async function deleteProduct(id) {
     
     try {
         await ipcRenderer.invoke('delete-product', id);
-        await loadProducts();
+        await loadProductsData();
         
         // Sadece ürün listesini güncelle - modal açmadan
         const container = document.getElementById('products-list-container');
@@ -853,7 +853,7 @@ async function handleAddCategory(event) {
     
     try {
         await ipcRenderer.invoke('add-category', categoryData);
-        await loadCategories();
+        await loadCategoriesData();
         
         closeProductModal('add-category-modal');
         showNotification('Kategori başarıyla eklendi', 'success');
@@ -885,7 +885,7 @@ async function deleteCategory(id) {
     
     try {
         await ipcRenderer.invoke('delete-category', id);
-        await loadCategories();
+        await loadCategoriesData();
         
         // Kategori listesini yenile - modal'ı kapatmadan
         const categoriesModal = document.getElementById('categories-modal');
@@ -961,7 +961,7 @@ async function handleEditCategory(event) {
     
     try {
         await ipcRenderer.invoke('update-category', categoryData);
-        await loadCategories();
+        await loadCategoriesData();
         
         closeProductModal('edit-category-modal');
         showNotification('Kategori başarıyla güncellendi', 'success');
@@ -1316,9 +1316,9 @@ function closeProductModal(modalId) {
 function showProductModalFromSale() {
     // Önce verileri yükle
     Promise.all([
-        loadCategories(),
-        loadBrands(),
-        loadProducts()
+        loadCategoriesData(),
+        loadBrandsData(),
+        loadProductsData()
     ]).then(() => {
         // Ürün ekleme modalını aç
         showProductModal();

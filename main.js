@@ -342,7 +342,30 @@ function setupIpcHandlers() {
     ipcMain.handle('get-customers', () => {
         try {
             const stmt = db.prepare('SELECT * FROM customers ORDER BY name');
-            return stmt.all();
+            const customers = stmt.all();
+            
+            // Her müşteri için bakiye hesapla ve güncelle
+            for (const customer of customers) {
+                const transactions = db.prepare(`
+                    SELECT type, total_amount FROM transactions 
+                    WHERE customer_id = ? ORDER BY created_at
+                `).all(customer.id);
+                
+                let balance = 0;
+                transactions.forEach(t => {
+                    if (t.type === 'debt') {
+                        balance += t.total_amount || 0;  // Satış = borç artırır
+                    } else if (t.type === 'payment') {
+                        balance -= t.total_amount || 0;  // Tahsilat = borç azaltır
+                    }
+                });
+                
+                // Bakiye güncelle
+                db.prepare('UPDATE customers SET balance = ? WHERE id = ?').run(balance, customer.id);
+                customer.balance = balance;
+            }
+            
+            return customers;
         } catch (error) {
             console.error('Get customers error:', error);
             return [];
@@ -552,10 +575,7 @@ function setupIpcHandlers() {
                 transaction.description
             );
             
-            // Müşteri bakiyesini güncelle
-            const updateBalance = db.prepare('UPDATE customers SET balance = balance + ? WHERE id = ?');
-            const balanceChange = transaction.type === 'debt' ? (transaction.total_amount || transaction.amount) : -(transaction.total_amount || transaction.amount);
-            updateBalance.run(balanceChange, transaction.customer_id);
+            // Müşteri bakiyesi artık otomatik güncellenmiyor - transaction'lardan hesaplanıyor
             
             // Ürün stokunu güncelle (sadece satış için)
             if (transaction.product_id && transaction.type === 'debt') {
@@ -1424,6 +1444,35 @@ function setupIpcHandlers() {
             };
         } catch (error) {
             console.error('Get update logs error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Manuel version güncelleme
+    ipcMain.handle('update-app-version', async (event, version) => {
+        try {
+            const configManager = getConfigManager();
+            const logger = getLogger();
+            
+            // Mevcut version'ı al
+            const currentVersion = configManager.getAppVersion();
+            
+            // Version'ı güncelle
+            configManager.setAppVersion(version);
+            
+            // Log'a kaydet
+            logger.log(`Version güncellendi: ${currentVersion} → ${version}`);
+            
+            console.log(`✅ App version updated: ${currentVersion} → ${version}`);
+            
+            return {
+                success: true,
+                message: `Version başarıyla ${version} olarak güncellendi`,
+                previousVersion: currentVersion,
+                newVersion: version
+            };
+        } catch (error) {
+            console.error('Update app version error:', error);
             return { success: false, error: error.message };
         }
     });

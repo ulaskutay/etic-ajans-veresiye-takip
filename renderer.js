@@ -37,7 +37,8 @@ if (typeof window.electronAPI === 'undefined') {
         checkForUpdates: () => window.ipcRenderer.invoke('check-for-updates'),
         downloadUpdate: (downloadUrl) => window.ipcRenderer.invoke('download-update', downloadUrl),
         installUpdate: () => window.ipcRenderer.invoke('install-update'),
-        getUpdateLogs: () => window.ipcRenderer.invoke('get-update-logs')
+        getUpdateLogs: () => window.ipcRenderer.invoke('get-update-logs'),
+        updateAppVersion: (version) => window.ipcRenderer.invoke('update-app-version', version)
     };
 }
 
@@ -613,7 +614,7 @@ function displayAllTransactions(preserveSelection = false) {
         // Bakiye hesaplama için işlemleri tarihe göre doğru sırala
         const sortedForBalance = [
             ...sales.map(s => ({ ...s, transactionType: 'sale' })),
-            ...purchases.map(p => ({ ...p, transactionType: 'purchase' }))
+            ...purchases.map(p => ({ ...p, transactionType: 'payment' }))
         ].sort((a, b) => {
             const dateA = new Date(a.created_at);
             const dateB = new Date(b.created_at);
@@ -634,14 +635,14 @@ function displayAllTransactions(preserveSelection = false) {
         for (const prevTransaction of sortedForBalance) {
             const prevDate = new Date(prevTransaction.created_at);
             
-            // Bu işlemden önceki tüm işlemleri dahil et (aynı tarih dahil değil)
-            if (prevDate < transactionDate) {
+            // Bu işleme kadar olan tüm işlemleri dahil et (aynı tarih dahil)
+            if (prevDate <= transactionDate) {
                 const prevAmount = prevTransaction.total_amount || prevTransaction.amount || 0;
                 
                 if (prevTransaction.transactionType === 'sale') {
-                    cumulativeBalance += prevAmount; // Satış = pozitif ekle
-                } else {
-                    cumulativeBalance -= prevAmount; // Tahsilat = negatif çıkar
+                    cumulativeBalance += prevAmount; // Satış = borç artırır
+                } else if (prevTransaction.transactionType === 'payment') {
+                    cumulativeBalance -= prevAmount; // Tahsilat = borç azaltır
                 }
             }
         }
@@ -717,9 +718,9 @@ function displayFilteredAllTransactions(filteredSales, filteredPurchases) {
                 const prevAmount = prevTransaction.total_amount || prevTransaction.amount || 0;
                 
                 if (prevTransaction.transactionType === 'sale') {
-                    cumulativeBalance += prevAmount; // Satış = pozitif ekle
-                } else {
-                    cumulativeBalance -= prevAmount; // Tahsilat = negatif çıkar
+                    cumulativeBalance += prevAmount; // Satış = borç artırır
+                } else if (prevTransaction.transactionType === 'payment') {
+                    cumulativeBalance -= prevAmount; // Tahsilat = borç azaltır
                 }
             }
         }
@@ -4637,6 +4638,10 @@ async function showSettingsModal() {
                                             style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
                                         🔍 Güncellemeleri Kontrol Et
                                     </button>
+                                    <button onclick="manualVersionUpdate()" 
+                                            style="padding: 8px 16px; background: #f59e0b; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
+                                        🔧 Manuel Version Güncelleme
+                                    </button>
                                     <button onclick="downloadUpdate()" id="download-btn" style="display: none; padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
                                         ⬇️ Güncellemeyi İndir
                                     </button>
@@ -7192,6 +7197,155 @@ async function installUpdate() {
     } catch (error) {
         console.error('Install update error:', error);
         showNotification('Güncelleme kurulurken hata oluştu', 'error');
+    }
+}
+
+// Manuel version güncelleme
+async function manualVersionUpdate() {
+    try {
+        // Modal ile version girişi
+        const modalHtml = `
+            <div id="version-update-modal" class="modal active" onclick="if(event.target.id === 'version-update-modal') closeModal('version-update-modal')" style="z-index: 20000;">
+                <div class="modal-content" style="max-width: 400px;" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h2>🔧 Manuel Version Güncelleme</h2>
+                        <button onclick="closeModal('version-update-modal')" class="close-btn">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Mevcut Version:</label>
+                            <div style="padding: 8px; background: #f3f4f6; border-radius: 6px; font-family: monospace; font-size: 14px;" id="current-version-display">Yükleniyor...</div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Hedef Version *</label>
+                            <input type="text" id="new-version-input" placeholder="örn: 1.2.0" 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
+                            <div style="margin-top: 5px; font-size: 12px; color: #6b7280;">
+                                💡 <strong>Önerilen:</strong> <span id="suggested-version">1.2.0</span> (mevcut + 0.1.0)
+                            </div>
+                        </div>
+                        
+                        <div style="background: #f0f9ff; padding: 12px; border-radius: 6px; border-left: 4px solid #3b82f6; margin-bottom: 15px;">
+                            <h5 style="margin: 0 0 5px 0; color: #1e40af;">ℹ️ Bilgi</h5>
+                            <p style="margin: 0; font-size: 12px; color: #1e40af;">
+                                Version numarası <strong>MAJOR.MINOR.PATCH</strong> formatında olmalıdır. Örnek: 1.2.0
+                            </p>
+                        </div>
+                        
+                        <div style="background: #fef3c7; padding: 12px; border-radius: 6px; border-left: 4px solid #f59e0b; margin-bottom: 15px;">
+                            <h5 style="margin: 0 0 5px 0; color: #92400e;">⚠️ Uyarı</h5>
+                            <p style="margin: 0; font-size: 12px; color: #92400e;">
+                                Version güncellemesi geri alınamaz. Lütfen doğru version numarasını girdiğinizden emin olun.
+                            </p>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                            <button onclick="closeModal('version-update-modal')" 
+                                    style="padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
+                                İptal
+                            </button>
+                            <button onclick="confirmVersionUpdate()" 
+                                    style="padding: 8px 16px; background: #f59e0b; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
+                                🔧 Version Güncelle
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // Mevcut version'ı göster ve önerilen version'ı hesapla
+        const currentVersionEl = document.getElementById('current-version-display');
+        const suggestedVersionEl = document.getElementById('suggested-version');
+        const config = await window.electronAPI.getConfig();
+        const currentVersion = config.appVersion || '1.1.0';
+        
+        currentVersionEl.textContent = currentVersion;
+        
+        // Önerilen version'ı hesapla (minor version +1)
+        const versionParts = currentVersion.split('.');
+        const major = parseInt(versionParts[0]) || 1;
+        const minor = parseInt(versionParts[1]) || 0;
+        const patch = parseInt(versionParts[2]) || 0;
+        
+        const suggestedVersion = `${major}.${minor + 1}.${patch}`;
+        suggestedVersionEl.textContent = suggestedVersion;
+        
+        // Input'a önerilen version'ı otomatik doldur
+        const input = document.getElementById('new-version-input');
+        input.value = suggestedVersion;
+        
+        // Input'a odaklan
+        setTimeout(() => {
+            if (input) input.focus();
+        }, 100);
+        
+    } catch (error) {
+        console.error('Manual version update modal error:', error);
+        showNotification('Version güncelleme modalı açılırken hata oluştu', 'error');
+    }
+}
+
+// Version güncellemeyi onayla
+async function confirmVersionUpdate() {
+    try {
+        const newVersion = document.getElementById('new-version-input').value.trim();
+        
+        if (!newVersion) {
+            showNotification('Lütfen yeni version numarasını girin', 'error');
+            return;
+        }
+        
+        // Version formatını kontrol et
+        const versionRegex = /^\d+\.\d+\.\d+$/;
+        if (!versionRegex.test(newVersion)) {
+            showNotification('Geçersiz version formatı! Örnek: 1.2.0', 'error');
+            return;
+        }
+        
+        // Mevcut version ile aynı mı kontrol et
+        const config = await window.electronAPI.getConfig();
+        const currentVersion = config.appVersion || '1.1.0';
+        
+        if (newVersion === currentVersion) {
+            showNotification('Yeni version mevcut version ile aynı!', 'error');
+            return;
+        }
+        
+        if (!confirm(`Version'ı ${currentVersion} → ${newVersion} olarak güncellemek istediğinizden emin misiniz?`)) {
+            return;
+        }
+        
+        showNotification('Version güncelleniyor...', 'info');
+        
+        // IPC üzerinden version güncelleme
+        const result = await window.electronAPI.updateAppVersion(newVersion);
+        
+        if (result.success) {
+            showNotification(`Version başarıyla ${newVersion} olarak güncellendi!`, 'success');
+            
+            // Modal'ı kapat
+            closeModal('version-update-modal');
+            
+            // Version bilgilerini yeniden yükle
+            await loadUpdateInfo();
+            
+            // Uygulamayı yeniden başlatma önerisi
+            setTimeout(() => {
+                if (confirm('Değişikliklerin etkili olması için uygulamayı yeniden başlatmak istiyor musunuz?')) {
+                    window.location.reload();
+                }
+            }, 2000);
+        } else {
+            throw new Error(result.error || 'Version güncellenemedi');
+        }
+        
+    } catch (error) {
+        console.error('Confirm version update error:', error);
+        showNotification('Version güncellenirken hata oluştu: ' + error.message, 'error');
     }
 }
 

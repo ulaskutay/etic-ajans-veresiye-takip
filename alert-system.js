@@ -239,7 +239,7 @@ async function showAddAlertForm() {
                     
                     <div id="customer-selection" style="margin-bottom: 16px; display: none;">
                         <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Müşteri Seçimi *</label>
-                        <select name="target_id" 
+                        <select name="customer_target_id" 
                                 style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
                             <option value="">Müşteri seçin</option>
                             ${customers.map(customer => 
@@ -250,7 +250,7 @@ async function showAddAlertForm() {
                     
                     <div id="product-selection" style="margin-bottom: 16px; display: none;">
                         <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Ürün Seçimi *</label>
-                        <select name="target_id" 
+                        <select name="product_target_id" 
                                 style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
                             <option value="">Ürün seçin</option>
                             <!-- Ürünler buraya yüklenecek -->
@@ -259,7 +259,7 @@ async function showAddAlertForm() {
                     
                     <div id="category-selection" style="margin-bottom: 16px; display: none;">
                         <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Kategori Seçimi *</label>
-                        <select name="target_id" 
+                        <select name="category_target_id" 
                                 style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
                             <option value="">Kategori seçin</option>
                             <!-- Kategoriler buraya yüklenecek -->
@@ -345,30 +345,47 @@ function updateTargetFields() {
     // Seçilen türe göre ilgili alanı göster
     if (targetType === 'customer') {
         customerSelection.style.display = 'block';
-        customerSelection.querySelector('select[name="target_id"]').required = true;
+        customerSelection.querySelector('select[name="customer_target_id"]').required = true;
     } else if (targetType === 'product') {
         productSelection.style.display = 'block';
-        productSelection.querySelector('select[name="target_id"]').required = true;
+        productSelection.querySelector('select[name="product_target_id"]').required = true;
         loadProducts(); // Ürünleri yükle
     } else if (targetType === 'category') {
         categorySelection.style.display = 'block';
-        categorySelection.querySelector('select[name="target_id"]').required = true;
+        categorySelection.querySelector('select[name="category_target_id"]').required = true;
         loadCategories(); // Kategorileri yükle
     } else {
         // Tümü seçildiğinde hiçbir seçim alanı gerekli değil
-        const allSelects = document.querySelectorAll('select[name="target_id"]');
-        allSelects.forEach(select => {
-            select.required = false;
-            select.value = '';
-        });
+        const customerSelect = customerSelection.querySelector('select[name="customer_target_id"]');
+        const productSelect = productSelection.querySelector('select[name="product_target_id"]');
+        const categorySelect = categorySelection.querySelector('select[name="category_target_id"]');
+        
+        if (customerSelect) {
+            customerSelect.required = false;
+            customerSelect.value = '';
+        }
+        if (productSelect) {
+            productSelect.required = false;
+            productSelect.value = '';
+        }
+        if (categorySelect) {
+            categorySelect.required = false;
+            categorySelect.value = '';
+        }
     }
 }
 
-// Ürünleri yükle
-async function loadProducts() {
+// Ürünleri yükle (esnek selector ile)
+async function loadProducts(selector = '#product-selection select[name="product_target_id"]') {
     try {
         const products = await window.ipcRenderer.invoke('get-products');
-        const productSelect = document.querySelector('#product-selection select[name="target_id"]');
+        const productSelect = document.querySelector(selector);
+        
+        // Element kontrolü
+        if (!productSelect) {
+            console.warn(`Product selection element not found: ${selector}`);
+            return;
+        }
         
         // Mevcut seçenekleri temizle (ilk seçenek hariç)
         productSelect.innerHTML = '<option value="">Ürün seçin</option>';
@@ -385,11 +402,17 @@ async function loadProducts() {
     }
 }
 
-// Kategorileri yükle
-async function loadCategories() {
+// Kategorileri yükle (esnek selector ile)
+async function loadCategories(selector = '#category-selection select[name="category_target_id"]') {
     try {
         const categories = await window.ipcRenderer.invoke('get-categories');
-        const categorySelect = document.querySelector('#category-selection select[name="target_id"]');
+        const categorySelect = document.querySelector(selector);
+        
+        // Element kontrolü
+        if (!categorySelect) {
+            console.warn(`Category selection element not found: ${selector}`);
+            return;
+        }
         
         // Mevcut seçenekleri temizle (ilk seçenek hariç)
         categorySelect.innerHTML = '<option value="">Kategori seçin</option>';
@@ -412,6 +435,7 @@ async function handleAddAlert(event) {
     
     const formData = new FormData(event.target);
     const alertType = formData.get('alert_type');
+    const targetType = formData.get('target_type');
     
     // Uyarı türüne göre condition_field belirle
     let conditionField = 'balance'; // Varsayılan
@@ -423,6 +447,16 @@ async function handleAddAlert(event) {
         conditionField = 'amount';
     }
     
+    // Hedef türüne göre target_id belirle
+    let targetId = null;
+    if (targetType === 'customer') {
+        targetId = formData.get('customer_target_id') || null;
+    } else if (targetType === 'product') {
+        targetId = formData.get('product_target_id') || null;
+    } else if (targetType === 'category') {
+        targetId = formData.get('category_target_id') || null;
+    }
+    
     const alertData = {
         name: formData.get('name'),
         description: formData.get('description'),
@@ -430,8 +464,8 @@ async function handleAddAlert(event) {
         condition_type: formData.get('condition_type'),
         condition_value: formData.get('condition_value'),
         condition_field: conditionField,
-        target_type: formData.get('target_type'),
-        target_id: formData.get('target_id') || null,
+        target_type: targetType,
+        target_id: targetId,
         priority: formData.get('priority'),
         notification_method: 'popup'
     };
