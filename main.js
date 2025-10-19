@@ -249,6 +249,25 @@ function createWindow() {
 
     mainWindow.loadFile('index.html');
     
+    // Content Security Policy ekle
+    mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+        callback({
+            responseHeaders: {
+                ...details.responseHeaders,
+                'Content-Security-Policy': [
+                    "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+                    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; " +
+                    "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
+                    "img-src 'self' data: blob:; " +
+                    "font-src 'self' https://cdnjs.cloudflare.com; " +
+                    "connect-src 'self'; " +
+                    "object-src 'none'; " +
+                    "base-uri 'self';"
+                ]
+            }
+        });
+    });
+    
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
         console.log('Window shown');
@@ -1213,7 +1232,7 @@ function setupIpcHandlers() {
             return [];
         }
     });
-
+    
     console.log('IPC handlers setup complete');
 }
 

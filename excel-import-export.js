@@ -1,4 +1,14 @@
-const XLSX = require('xlsx');
+// XLSX modülünü güvenli şekilde yükle
+if (typeof window.XLSX === 'undefined') {
+    let XLSX;
+    try {
+        XLSX = require('xlsx');
+        window.XLSX = XLSX; // Global olarak sakla
+    } catch (error) {
+        console.error('XLSX modülü yüklenemedi:', error);
+        window.XLSX = null;
+    }
+}
 
 // Excel ile toplu ürün yükleme modalını göster
 function showExcelImportModal() {
@@ -139,6 +149,11 @@ async function loadCategoriesAndBrandsForExcelImport() {
 
 // Excel şablonunu indir
 function downloadExcelTemplate() {
+    if (!window.XLSX) {
+        showNotification('XLSX modülü yüklenemedi', 'error');
+        return;
+    }
+    
     const templateData = [
         {
             'Ürün Adı': 'Örnek Ürün 1',
@@ -170,12 +185,12 @@ function downloadExcelTemplate() {
         }
     ];
     
-    const ws = XLSX.utils.json_to_sheet(templateData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Ürünler');
+    const ws = window.XLSX.utils.json_to_sheet(templateData);
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, 'Ürünler');
     
     // Electron'da dosya indirme için alternatif yöntem
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const wbout = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbout], { type: 'application/octet-stream' });
     
     // Dosya indirme linki oluştur
@@ -193,6 +208,11 @@ function downloadExcelTemplate() {
 
 // Excel dosyası seçildiğinde
 function handleExcelFileSelect(event) {
+    if (!window.XLSX) {
+        showNotification('XLSX modülü yüklenemedi', 'error');
+        return;
+    }
+    
     const file = event.target.files[0];
     if (!file) return;
     
@@ -210,14 +230,14 @@ function handleExcelFileSelect(event) {
     reader.onload = function(e) {
         try {
             const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
+            const workbook = window.XLSX.read(data, { type: 'array' });
             
             // İlk sayfayı al
             const sheetName = workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
             
             // JSON formatına çevir
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            const jsonData = window.XLSX.utils.sheet_to_json(worksheet, { header: 1 });
             
             if (jsonData.length < 2) {
                 showNotification('❌ Excel dosyası boş veya geçersiz!', 'error');
@@ -606,6 +626,11 @@ function showExcelCustomerImportModal() {
 
 // Müşteri Excel şablonunu indir
 function downloadCustomerExcelTemplate() {
+    if (!window.XLSX) {
+        showNotification('XLSX modülü yüklenemedi', 'error');
+        return;
+    }
+    
     const templateData = [
         {
             'Müşteri Adı': 'Ahmet Yılmaz',
@@ -653,12 +678,12 @@ function downloadCustomerExcelTemplate() {
         }
     ];
     
-    const ws = XLSX.utils.json_to_sheet(templateData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Müşteriler');
+    const ws = window.XLSX.utils.json_to_sheet(templateData);
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, 'Müşteriler');
     
     // Electron'da dosya indirme için alternatif yöntem
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const wbout = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbout], { type: 'application/octet-stream' });
     
     // Dosya indirme linki oluştur
@@ -676,6 +701,11 @@ function downloadCustomerExcelTemplate() {
 
 // Müşteri Excel dosyası seçildiğinde
 function handleCustomerExcelFileSelect(event) {
+    if (!window.XLSX) {
+        showNotification('XLSX modülü yüklenemedi', 'error');
+        return;
+    }
+    
     const file = event.target.files[0];
     if (!file) return;
 
@@ -683,10 +713,10 @@ function handleCustomerExcelFileSelect(event) {
     reader.onload = function(e) {
         try {
             const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
+            const workbook = window.XLSX.read(data, { type: 'array' });
             const sheetName = workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            const jsonData = window.XLSX.utils.sheet_to_json(worksheet, { header: 1 });
             
             if (jsonData.length < 2) {
                 showNotification('❌ Excel dosyası boş veya geçersiz!', 'error');

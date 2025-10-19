@@ -1,14 +1,22 @@
 // Basit Uyarı Sistemi - Simple Alert System
 
-// Uyarı verileri
-let alerts = [];
-let alertTriggers = [];
+// Uyarı verileri - güvenli tanımlama
+if (typeof window.alerts === 'undefined') {
+    window.alerts = [];
+}
+if (typeof window.alertTriggers === 'undefined') {
+    window.alertTriggers = [];
+}
+
+// Local referanslar
+let alerts = window.alerts;
+let alertTriggers = window.alertTriggers;
 
 // Uyarıları yükle
 async function loadAlerts() {
     try {
-        alerts = await ipcRenderer.invoke('get-alerts');
-        alertTriggers = await ipcRenderer.invoke('get-alert-triggers');
+        alerts = await window.ipcRenderer.invoke('get-alerts');
+        alertTriggers = await window.ipcRenderer.invoke('get-alert-triggers');
         updateAlertDisplay();
     } catch (error) {
         console.error('Uyarılar yüklenirken hata:', error);
@@ -159,8 +167,22 @@ function getAlertTypeText(type) {
     return texts[type] || '⚙️ Özel';
 }
 
+// Müşteri listesini yükle
+async function loadCustomers() {
+    try {
+        customers = await window.electronAPI.getCustomers();
+        return customers;
+    } catch (error) {
+        console.error('Müşteri yükleme hatası:', error);
+        customers = [];
+        return [];
+    }
+}
+
 // Uyarı ekleme formu
-function showAddAlertForm() {
+async function showAddAlertForm() {
+    // Müşteri listesini yükle
+    await loadCustomers();
     const modalHtml = `
         <div id="add-alert-modal" class="modal active" onclick="if(event.target.id === 'add-alert-modal') closeModal('add-alert-modal')" style="z-index: 20000; transition: opacity 0.15s ease, transform 0.15s ease;">
             <div class="modal-content" style="max-width: 500px; transition: transform 0.15s ease;" onclick="event.stopPropagation()">
@@ -205,11 +227,33 @@ function showAddAlertForm() {
                         </div>
                     </div>
                     
+                    <div style="margin-bottom: 16px;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Hedef *</label>
+                        <select name="target_type" required onchange="updateTargetFields()"
+                                style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
+                            <option value="">Seçin</option>
+                            <option value="all">🌐 Tümü</option>
+                            <option value="customer">👤 Müşteri</option>
+                        </select>
+                    </div>
+                    
+                    <div id="customer-selection" style="margin-bottom: 16px; display: none;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Müşteri Seçimi *</label>
+                        <select name="target_id" 
+                                style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
+                            <option value="">Müşteri seçin</option>
+                            ${customers.map(customer => 
+                                `<option value="${customer.id}">${customer.name} ${customer.balance ? `(${customer.balance} TL)` : ''}</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                    
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                         <div>
                             <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Koşul *</label>
                             <select name="condition_type" required 
                                     style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
+                                <option value="">Seçin</option>
                                 <option value="less_than">Küçük</option>
                                 <option value="greater_than">Büyük</option>
                                 <option value="equals">Eşit</option>
@@ -241,6 +285,22 @@ function showAddAlertForm() {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
+// Hedef alanlarını güncelle
+function updateTargetFields() {
+    const targetType = document.querySelector('select[name="target_type"]').value;
+    const customerSelection = document.getElementById('customer-selection');
+    const targetIdSelect = document.querySelector('select[name="target_id"]');
+    
+    if (targetType === 'customer') {
+        customerSelection.style.display = 'block';
+        targetIdSelect.required = true;
+    } else {
+        customerSelection.style.display = 'none';
+        targetIdSelect.required = false;
+        targetIdSelect.value = '';
+    }
+}
+
 // Uyarı ekleme işlemi
 async function handleAddAlert(event) {
     event.preventDefault();
@@ -252,14 +312,15 @@ async function handleAddAlert(event) {
         alert_type: formData.get('alert_type'),
         condition_type: formData.get('condition_type'),
         condition_value: formData.get('condition_value'),
-        condition_field: 'stock', // Basit için sabit
-        target_type: 'all', // Basit için sabit
+        condition_field: 'balance', // Borç için balance kullan
+        target_type: formData.get('target_type'),
+        target_id: formData.get('target_id') || null,
         priority: formData.get('priority'),
         notification_method: 'popup'
     };
     
     try {
-        await ipcRenderer.invoke('add-alert', alertData);
+        await window.ipcRenderer.invoke('add-alert', alertData);
         showNotification('Uyarı başarıyla eklendi', 'success');
         closeModal('add-alert-modal');
         await loadAlerts();
@@ -282,7 +343,7 @@ async function deleteAlert(alertId) {
     if (!confirm('Bu uyarıyı silmek istediğinizden emin misiniz?')) return;
     
     try {
-        await ipcRenderer.invoke('delete-alert', alertId);
+        await window.ipcRenderer.invoke('delete-alert', alertId);
         showNotification('Uyarı silindi', 'success');
         await loadAlerts();
     } catch (error) {
@@ -294,7 +355,7 @@ async function deleteAlert(alertId) {
 // Tetiklenen uyarıyı çöz
 async function resolveTrigger(triggerId) {
     try {
-        await ipcRenderer.invoke('resolve-alert-trigger', triggerId);
+        await window.ipcRenderer.invoke('resolve-alert-trigger', triggerId);
         showNotification('Uyarı çözüldü', 'success');
         await loadAlerts();
     } catch (error) {

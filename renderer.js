@@ -1,14 +1,67 @@
-const { ipcRenderer } = require('electron');
+// ipcRenderer'ı güvenli şekilde yükle
+if (typeof window.ipcRenderer === 'undefined') {
+    const { ipcRenderer } = require('electron');
+    window.ipcRenderer = ipcRenderer;
+}
 
-// Global değişkenler
-let customers = [];
-let currentCustomer = null;
-let sales = [];
-let purchases = [];
-let products = []; // Ürünler listesi
-let categories = []; // Kategoriler listesi
-let brands = []; // Markalar listesi
-let selectedCustomerId = null; // Seçili müşteri ID'si
+// Electron API wrapper
+if (typeof window.electronAPI === 'undefined') {
+    window.electronAPI = {
+    getCustomers: () => window.ipcRenderer.invoke('get-customers'),
+    addCustomer: (customer) => window.ipcRenderer.invoke('add-customer', customer),
+    updateCustomer: (id, customer) => window.ipcRenderer.invoke('update-customer', id, customer),
+    deleteCustomer: (id) => window.ipcRenderer.invoke('delete-customer', id),
+    getProducts: () => window.ipcRenderer.invoke('get-products'),
+    addProduct: (product) => window.ipcRenderer.invoke('add-product', product),
+    updateProduct: (id, product) => window.ipcRenderer.invoke('update-product', id, product),
+    deleteProduct: (id) => window.ipcRenderer.invoke('delete-product', id),
+    getTransactions: () => window.ipcRenderer.invoke('get-transactions'),
+    addTransaction: (transaction) => window.ipcRenderer.invoke('add-transaction', transaction),
+    getAlerts: () => window.ipcRenderer.invoke('get-alerts'),
+    addAlert: (alert) => window.ipcRenderer.invoke('add-alert', alert),
+    updateAlert: (id, alert) => window.ipcRenderer.invoke('update-alert', id, alert),
+    deleteAlert: (id) => window.ipcRenderer.invoke('delete-alert', id),
+    getAlertTriggers: () => window.ipcRenderer.invoke('get-alert-triggers'),
+    resolveAlertTrigger: (id) => window.ipcRenderer.invoke('resolve-alert-trigger', id),
+    checkAlerts: () => window.ipcRenderer.invoke('check-alerts')
+    };
+}
+
+// Global değişkenler - güvenli tanımlama
+if (typeof window.customers === 'undefined') {
+    window.customers = [];
+}
+if (typeof window.currentCustomer === 'undefined') {
+    window.currentCustomer = null;
+}
+if (typeof window.sales === 'undefined') {
+    window.sales = [];
+}
+if (typeof window.purchases === 'undefined') {
+    window.purchases = [];
+}
+if (typeof window.products === 'undefined') {
+    window.products = [];
+}
+if (typeof window.categories === 'undefined') {
+    window.categories = [];
+}
+if (typeof window.brands === 'undefined') {
+    window.brands = [];
+}
+if (typeof window.selectedCustomerId === 'undefined') {
+    window.selectedCustomerId = null;
+}
+
+// Local referanslar
+let customers = window.customers;
+let currentCustomer = window.currentCustomer;
+let sales = window.sales;
+let purchases = window.purchases;
+let products = window.products;
+let categories = window.categories;
+let brands = window.brands;
+let selectedCustomerId = window.selectedCustomerId;
 
 // Sayfa yüklendiğinde
 document.addEventListener('DOMContentLoaded', async () => {
@@ -21,9 +74,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeAlertSystem();
     
     // IPC listener for global shortcuts
-    const { ipcRenderer } = require('electron');
     
-    ipcRenderer.on('shortcut-pressed', (event, shortcut) => {
+    window.ipcRenderer.on('shortcut-pressed', (event, shortcut) => {
         switch (shortcut) {
         case 'new-customer':
                 focusCustomerSearch();
@@ -297,8 +349,17 @@ function setDefaultDates() {
     const thirtyDaysAgo = new Date(today);
     thirtyDaysAgo.setDate(today.getDate() - 30);
     
-    document.getElementById('start-date').value = formatDateForInput(thirtyDaysAgo);
-    document.getElementById('end-date').value = formatDateForInput(today);
+    // Elementlerin varlığını kontrol et
+    const startDateElement = document.getElementById('start-date');
+    const endDateElement = document.getElementById('end-date');
+    
+    if (startDateElement) {
+        startDateElement.value = formatDateForInput(thirtyDaysAgo);
+    }
+    
+    if (endDateElement) {
+        endDateElement.value = formatDateForInput(today);
+    }
     
     // Set "Son 30 Gün" button as active by default
     setTimeout(() => {
@@ -317,9 +378,16 @@ function formatDateForInput(date) {
 // Load customers
 async function loadCustomers(clearSelection = false) {
     try {
-        customers = await ipcRenderer.invoke('get-customers');
-        displayCustomers();
-        updateAccountSummary();
+        customers = await window.ipcRenderer.invoke('get-customers');
+        
+        // DOM elementleri hazır olduğunda göster
+        if (document.getElementById('customer-table-body')) {
+            displayCustomers();
+        }
+        
+        if (document.getElementById('account-summary')) {
+            updateAccountSummary();
+        }
         
         // Only clear selection if explicitly requested
         if (clearSelection) {
@@ -335,6 +403,12 @@ async function loadCustomers(clearSelection = false) {
 // Display customers in table
 function displayCustomers() {
     const tbody = document.getElementById('customer-table-body');
+    
+    // Element bulunamazsa hata verme
+    if (!tbody) {
+        console.log('customer-table-body element not found, skipping display');
+        return;
+    }
     
     if (customers.length === 0) {
         tbody.innerHTML = '<tr><td colspan="2" class="no-data">Henüz müşteri bulunmuyor</td></tr>';
@@ -359,7 +433,7 @@ async function selectCustomer(customerId) {
         document.querySelector(`tr[data-customer-id="${customerId}"]`).classList.add('selected');
         
         // Load customer details
-        currentCustomer = await ipcRenderer.invoke('get-customer', customerId);
+        currentCustomer = await window.ipcRenderer.invoke('get-customer', customerId);
         displayCustomerDetails();
         
         // Load transactions
@@ -368,6 +442,18 @@ async function selectCustomer(customerId) {
     } catch (error) {
         console.error('Müşteri seçilirken hata:', error);
         showNotification('Müşteri seçilirken hata oluştu', 'error');
+    }
+}
+
+// Müşteri satışlarını yeniden yükle
+async function loadCustomerSales() {
+    if (!currentCustomer) return;
+    
+    try {
+        await loadTransactions(currentCustomer.id);
+        displayAllTransactions();
+    } catch (error) {
+        console.error('Müşteri satışları yüklenirken hata:', error);
     }
 }
 
@@ -421,7 +507,7 @@ async function loadTransactions(customerId, preserveSelection = false) {
     try {
         console.log('Loading transactions for customer:', customerId, 'preserveSelection:', preserveSelection);
         
-        const transactions = await ipcRenderer.invoke('get-transactions', customerId);
+        const transactions = await window.ipcRenderer.invoke('get-transactions', customerId);
         console.log('Loaded transactions:', transactions.length);
         
         // Separate sales and purchases
@@ -675,7 +761,7 @@ function displayPurchases() {
 async function updateAccountSummary() {
     try {
         // Tüm transaction'ları al
-        const allTransactions = await ipcRenderer.invoke('get-all-transactions');
+        const allTransactions = await window.ipcRenderer.invoke('get-all-transactions');
         
         let totalSales = 0;
         let totalPayments = 0;
@@ -703,21 +789,33 @@ async function updateAccountSummary() {
         const netBalance = totalSales - totalPayments;
         const paymentRate = totalSales > 0 ? ((totalPayments / totalSales) * 100).toFixed(1) : 0;
         
-        // Güncellenmiş değerleri göster
-        document.getElementById('total-sales').textContent = formatMoney(totalSales);
-        document.getElementById('total-payments').textContent = formatMoney(totalPayments);
-        document.getElementById('total-debt').textContent = formatMoney(totalDebt);
-        document.getElementById('net-balance').textContent = formatMoney(netBalance);
-        document.getElementById('payment-rate').textContent = paymentRate + '%';
+        // Güncellenmiş değerleri göster (elementler varsa)
+        const totalSalesEl = document.getElementById('total-sales');
+        const totalPaymentsEl = document.getElementById('total-payments');
+        const totalDebtEl = document.getElementById('total-debt');
+        const netBalanceEl = document.getElementById('net-balance');
+        const paymentRateEl = document.getElementById('payment-rate');
+        
+        if (totalSalesEl) totalSalesEl.textContent = formatMoney(totalSales);
+        if (totalPaymentsEl) totalPaymentsEl.textContent = formatMoney(totalPayments);
+        if (totalDebtEl) totalDebtEl.textContent = formatMoney(totalDebt);
+        if (netBalanceEl) netBalanceEl.textContent = formatMoney(netBalance);
+        if (paymentRateEl) paymentRateEl.textContent = paymentRate + '%';
         
     } catch (error) {
         console.error('Hesap özeti güncellenirken hata:', error);
-        // Hata durumunda eski değerleri göster
-        document.getElementById('total-sales').textContent = '0,00';
-        document.getElementById('total-payments').textContent = '0,00';
-        document.getElementById('total-debt').textContent = '0,00';
-        document.getElementById('net-balance').textContent = '0,00';
-        document.getElementById('payment-rate').textContent = '0%';
+        // Hata durumunda eski değerleri göster (elementler varsa)
+        const totalSalesEl = document.getElementById('total-sales');
+        const totalPaymentsEl = document.getElementById('total-payments');
+        const totalDebtEl = document.getElementById('total-debt');
+        const netBalanceEl = document.getElementById('net-balance');
+        const paymentRateEl = document.getElementById('payment-rate');
+        
+        if (totalSalesEl) totalSalesEl.textContent = '0,00';
+        if (totalPaymentsEl) totalPaymentsEl.textContent = '0,00';
+        if (totalDebtEl) totalDebtEl.textContent = '0,00';
+        if (netBalanceEl) netBalanceEl.textContent = '0,00';
+        if (paymentRateEl) paymentRateEl.textContent = '0%';
     }
 }
 
@@ -840,7 +938,7 @@ async function deleteSale() {
     if (confirm(`"${selectedSale.description || 'Satış'}" işlemini silmek istediğinizden emin misiniz?`)) {
         // Doğrudan silme işlemini yap
         try {
-            const result = await ipcRenderer.invoke('delete-transaction', selectedSale.id);
+            const result = await window.ipcRenderer.invoke('delete-transaction', selectedSale.id);
             
             if (result.success) {
                 showNotification('Satış işlemi başarıyla silindi', 'success');
@@ -986,7 +1084,7 @@ function getSelectedTransaction(transactionType = null) {
 // Delete transaction (generic function)
 async function deleteTransaction(transactionId) {
     try {
-        const result = await ipcRenderer.invoke('delete-transaction', transactionId);
+        const result = await window.ipcRenderer.invoke('delete-transaction', transactionId);
         
         if (result.success) {
             showNotification('İşlem başarıyla silindi', 'success');
@@ -1070,7 +1168,7 @@ async function handleEditSale(e) {
     console.log('Sending transaction data:', transactionData);
     
     try {
-        const result = await ipcRenderer.invoke('update-transaction', transactionData);
+        const result = await window.ipcRenderer.invoke('update-transaction', transactionData);
         console.log('Update result:', result);
         
         if (result.success) {
@@ -1079,28 +1177,19 @@ async function handleEditSale(e) {
             // Modal'ı kapat
             closeModal('edit-sale-modal');
             
-            // Sadece o satırı güncelle, tabloyu yeniden yükleme
-            console.log('Update completed - updating row in place');
+            // Satışları yeniden yükle ve ekranı güncelle
+            console.log('Update completed - reloading sales data');
             
-            // Seçili satırı bul ve güncelle
-            const selectedRow = document.querySelector('#sales-table-body tr.selected');
-            if (selectedRow) {
-                const transactionId = selectedRow.getAttribute('data-transaction-id');
-                
-                // Satır içeriğini güncelle
-                const cells = selectedRow.querySelectorAll('td');
-                if (cells.length >= 6) {
-                    // Tarih güncelle (ilk 3 hücre: gün, ay, yıl)
-                    const today = new Date();
-                    cells[0].textContent = today.getDate();
-                    cells[1].textContent = today.getMonth() + 1;
-                    cells[2].textContent = today.getFullYear();
-                    
-                    // Açıklama güncelle (5. hücre)
-                    cells[4].textContent = description;
-                    
-                    console.log('Row updated in place:', transactionId);
-                }
+            // Müşteri satışlarını yeniden yükle
+            await loadCustomerSales();
+            
+            // Hesap özetini güncelle
+            updateAccountSummary();
+            
+            // Tüm işlemler sekmesi aktifse onu da güncelle
+            const allTransactionsTab = document.getElementById('all-transactions-tab');
+            if (allTransactionsTab && allTransactionsTab.classList.contains('active')) {
+                await loadAllTransactions();
             }
             
         } else {
@@ -1130,7 +1219,7 @@ async function handleEditPurchase(e) {
     };
     
     try {
-        const result = await ipcRenderer.invoke('update-transaction', transactionData);
+        const result = await window.ipcRenderer.invoke('update-transaction', transactionData);
         
         if (result.success) {
             showNotification('Tahsilat başarıyla güncellendi', 'success');
@@ -1158,7 +1247,7 @@ async function handleEditPurchase(e) {
 // Load products for select dropdown
 async function loadProductsForSelect(selectId) {
     try {
-        const products = await ipcRenderer.invoke('get-products');
+        const products = await window.ipcRenderer.invoke('get-products');
         const select = document.getElementById(selectId);
         
         // Clear existing options
@@ -1191,7 +1280,7 @@ async function handleEditProductSelection() {
     
     try {
         // Tüm ürünleri yeniden yükle
-        const allProducts = await ipcRenderer.invoke('get-products');
+        const allProducts = await window.ipcRenderer.invoke('get-products');
         const product = allProducts.find(p => p.id == productId);
         
         if (product) {
@@ -1581,7 +1670,7 @@ async function handleAddCustomer(e) {
     }
     
     try {
-        const newCustomer = await ipcRenderer.invoke('add-customer', {
+        const newCustomer = await window.ipcRenderer.invoke('add-customer', {
             name,
             code,
             phone,
@@ -1633,7 +1722,7 @@ async function handleProductSelection(e) {
     }
     
     try {
-        const products = await ipcRenderer.invoke('get-products');
+        const products = await window.ipcRenderer.invoke('get-products');
         const selectedProduct = products.find(p => p.id == productId);
         
         if (selectedProduct) {
@@ -1679,7 +1768,7 @@ async function handleAddSale(e) {
     const storedCustomerId = selectedCustomerId; // Store before reset
     
     try {
-        await ipcRenderer.invoke('add-transaction', {
+        await window.ipcRenderer.invoke('add-transaction', {
             customer_id: storedCustomerId,
             product_id: productId,
             type: 'debt',
@@ -1740,7 +1829,7 @@ async function handleAddPurchase(e) {
     try {
         console.log('📤 Tahsilat kaydediliyor...');
         
-        await ipcRenderer.invoke('add-transaction', {
+        await window.ipcRenderer.invoke('add-transaction', {
             customer_id: storedCustomerId,
             type: 'payment',
             quantity: 1,
@@ -1893,7 +1982,7 @@ async function deleteTransaction() {
 // Load products for sale dropdown
 async function loadProductsForSale() {
     try {
-        const products = await ipcRenderer.invoke('get-products');
+        const products = await window.ipcRenderer.invoke('get-products');
         const select = document.getElementById('sale-product');
         
         select.innerHTML = '<option value="">Ürün seçin (veya manuel tutar girin)</option>';
@@ -2055,7 +2144,7 @@ async function handleEditCustomer(e) {
     console.log('Sending update request with data:', { id, name, customerType });
     
     try {
-        const result = await ipcRenderer.invoke('update-customer', {
+        const result = await window.ipcRenderer.invoke('update-customer', {
             id: id,
             name,
             code,
@@ -2117,7 +2206,7 @@ async function deleteCustomer() {
     }
     
     try {
-        const result = await ipcRenderer.invoke('delete-customer', currentCustomer.id);
+        const result = await window.ipcRenderer.invoke('delete-customer', currentCustomer.id);
         
         if (result.success) {
             showNotification('Müşteri başarıyla silindi', 'success');
@@ -2244,7 +2333,7 @@ function selectCustomerFromDropdown(customerId, customerName, dropdownId) {
 // Load customers for select dropdown (legacy function - keeping for compatibility)
 async function loadCustomersForSelect(selectId) {
     try {
-        const customers = await ipcRenderer.invoke('get-customers');
+        const customers = await window.ipcRenderer.invoke('get-customers');
         const select = document.getElementById(selectId);
         
         select.innerHTML = '<option value="">Müşteri seçin...</option>';
@@ -2473,7 +2562,7 @@ async function quickSale() {
     try {
         const today = new Date().toISOString().split('T')[0];
         
-        await ipcRenderer.invoke('add-transaction', {
+        await window.ipcRenderer.invoke('add-transaction', {
             customer_id: currentCustomer.id,
             type: 'sale',
             date: today,
@@ -2521,7 +2610,7 @@ async function quickPurchase() {
     try {
         const today = new Date().toISOString().split('T')[0];
         
-        await ipcRenderer.invoke('add-transaction', {
+        await window.ipcRenderer.invoke('add-transaction', {
             customer_id: currentCustomer.id,
             type: 'payment',
             date: today,
@@ -3969,7 +4058,7 @@ function showReportsModal() {
 async function showProductManagement() {
     try {
         // Mevcut ürünleri getir
-        const products = await ipcRenderer.invoke('get-products');
+        const products = await window.ipcRenderer.invoke('get-products');
         
     const modalHtml = `
             <div id="product-management-modal" class="modal active" onclick="if(event.target.id === 'product-management-modal') closeModal('product-management-modal')">
@@ -4209,7 +4298,7 @@ async function deleteProduct(productId) {
     }
     
     try {
-        await ipcRenderer.invoke('delete-product', productId);
+        await window.ipcRenderer.invoke('delete-product', productId);
         showNotification('✅ Ürün başarıyla silindi', 'success');
         
         // Satış ekranındaki ürün seçimini güncelle (silinen ürünü kaldır)
@@ -4232,7 +4321,7 @@ async function deleteProduct(productId) {
 // Ürünleri Excel'e aktar
 async function exportProductsToExcel() {
     try {
-        const products = await ipcRenderer.invoke('get-products');
+        const products = await window.ipcRenderer.invoke('get-products');
         
         let csvContent = 'Ürün Adı,Kod,Barkod,Birim,Alış Fiyatı,Satış Fiyatı,KDV Oranı,Stok,Min Stok,Kategori,Açıklama,Durum\n';
         
@@ -4339,7 +4428,7 @@ function printProducts() {
 async function showSettingsModal() {
     try {
         // Mevcut firma ayarlarını getir
-        const companySettings = await ipcRenderer.invoke('get-company-settings');
+        const companySettings = await window.ipcRenderer.invoke('get-company-settings');
         
     const modalHtml = `
             <div id="settings-modal" class="modal active" onclick="if(event.target.id === 'settings-modal') closeModal('settings-modal')">
@@ -4544,7 +4633,7 @@ function handleLogoFileSelect(event) {
 // Firma ayarlarını yükle ve header'da göster
 async function loadCompanySettings() {
     try {
-        const companySettings = await ipcRenderer.invoke('get-company-settings');
+        const companySettings = await window.ipcRenderer.invoke('get-company-settings');
         
         // Firma adını güncelle
         const companyNameElement = document.getElementById('company-name');
@@ -4588,7 +4677,7 @@ async function saveCompanySettings(event) {
             invoice_number: parseInt(formData.get('invoice_number'))
         };
         
-        const result = await ipcRenderer.invoke('update-company-settings', settingsData);
+        const result = await window.ipcRenderer.invoke('update-company-settings', settingsData);
         
         if (result.success) {
             showNotification('✅ Firma ayarları başarıyla kaydedildi', 'success');
@@ -4614,7 +4703,7 @@ async function generateFinancialReport() {
     closeModal('reports-modal');
         
         // Tüm müşterileri getir
-        const customers = await ipcRenderer.invoke('get-customers');
+        const customers = await window.ipcRenderer.invoke('get-customers');
         if (!customers || customers.length === 0) {
             showNotification('Müşteri bulunamadı', 'warning');
             return;
@@ -4627,8 +4716,8 @@ async function generateFinancialReport() {
         let totalTransactions = 0;
         
         for (const customer of customers) {
-            const sales = await ipcRenderer.invoke('get-sales', customer.id);
-            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            const sales = await window.ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await window.ipcRenderer.invoke('get-purchases', customer.id);
             
             const customerSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
             const customerPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
@@ -4743,7 +4832,7 @@ async function exportGeneralFinancialToExcel() {
         const currentDateStr = currentDate.toLocaleDateString('tr-TR');
         
         // Tüm müşterileri getir
-        const customers = await ipcRenderer.invoke('get-customers');
+        const customers = await window.ipcRenderer.invoke('get-customers');
         
         // Tüm işlemleri topla
         let totalSales = 0;
@@ -4752,8 +4841,8 @@ async function exportGeneralFinancialToExcel() {
         let totalTransactions = 0;
         
         for (const customer of customers) {
-            const sales = await ipcRenderer.invoke('get-sales', customer.id);
-            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            const sales = await window.ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await window.ipcRenderer.invoke('get-purchases', customer.id);
             
             const customerSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
             const customerPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
@@ -4783,8 +4872,8 @@ async function exportGeneralFinancialToExcel() {
         csvContent += 'Musteri Adi,Toplam Satis,Toplam Tahsilat,Net Bakiye,Tahsilat Orani,Islem Sayisi\n';
         
         for (const customer of customers) {
-            const sales = await ipcRenderer.invoke('get-sales', customer.id);
-            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            const sales = await window.ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await window.ipcRenderer.invoke('get-purchases', customer.id);
             
             const customerSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
             const customerPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
@@ -4823,7 +4912,7 @@ async function exportGeneralFinancialToPDF() {
         const currentDateStr = currentDate.toLocaleDateString('tr-TR');
         
         // Tüm müşterileri getir
-        const customers = await ipcRenderer.invoke('get-customers');
+        const customers = await window.ipcRenderer.invoke('get-customers');
         
         // Tüm işlemleri topla
         let totalSales = 0;
@@ -4832,8 +4921,8 @@ async function exportGeneralFinancialToPDF() {
         let totalTransactions = 0;
         
         for (const customer of customers) {
-            const sales = await ipcRenderer.invoke('get-sales', customer.id);
-            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            const sales = await window.ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await window.ipcRenderer.invoke('get-purchases', customer.id);
             
             const customerSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
             const customerPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
@@ -4913,8 +5002,8 @@ async function exportGeneralFinancialToPDF() {
         
         const customerData = [];
         for (const customer of customers) {
-            const sales = await ipcRenderer.invoke('get-sales', customer.id);
-            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            const sales = await window.ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await window.ipcRenderer.invoke('get-purchases', customer.id);
             
             const customerSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
             const customerPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
@@ -5055,7 +5144,7 @@ async function generateCustomerReport() {
         showNotification('👥 Müşteri analiz raporu hazırlanıyor...', 'info');
         
         // Tüm müşterileri getir
-        const customers = await ipcRenderer.invoke('get-customers');
+        const customers = await window.ipcRenderer.invoke('get-customers');
         if (!customers || customers.length === 0) {
             showNotification('Müşteri bulunamadı', 'warning');
             return;
@@ -5065,8 +5154,8 @@ async function generateCustomerReport() {
         const customerAnalysis = [];
         
         for (const customer of customers) {
-            const sales = await ipcRenderer.invoke('get-sales', customer.id);
-            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            const sales = await window.ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await window.ipcRenderer.invoke('get-purchases', customer.id);
             
             const totalSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
             const totalPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
@@ -5106,7 +5195,7 @@ async function generateTransactionReport() {
         showNotification('📋 İşlem detay raporu hazırlanıyor...', 'info');
         
         // Tüm müşterileri getir
-        const customers = await ipcRenderer.invoke('get-customers');
+        const customers = await window.ipcRenderer.invoke('get-customers');
         if (!customers || customers.length === 0) {
             showNotification('Müşteri bulunamadı', 'warning');
             return;
@@ -5116,8 +5205,8 @@ async function generateTransactionReport() {
         const allTransactions = [];
         
         for (const customer of customers) {
-            const sales = await ipcRenderer.invoke('get-sales', customer.id);
-            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            const sales = await window.ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await window.ipcRenderer.invoke('get-purchases', customer.id);
             
             // Satışları ekle
             sales.forEach(sale => {
@@ -5158,7 +5247,7 @@ async function generateDebtReport() {
         showNotification('💳 Borç analiz raporu hazırlanıyor...', 'info');
         
         // Tüm müşterileri getir
-        const customers = await ipcRenderer.invoke('get-customers');
+        const customers = await window.ipcRenderer.invoke('get-customers');
         if (!customers || customers.length === 0) {
             showNotification('Müşteri bulunamadı', 'warning');
             return;
@@ -5168,8 +5257,8 @@ async function generateDebtReport() {
         const debtAnalysis = [];
         
         for (const customer of customers) {
-            const sales = await ipcRenderer.invoke('get-sales', customer.id);
-            const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+            const sales = await window.ipcRenderer.invoke('get-sales', customer.id);
+            const purchases = await window.ipcRenderer.invoke('get-purchases', customer.id);
             
             const totalSales = sales.reduce((sum, s) => sum + (s.total_amount || s.amount || 0), 0);
             const totalPayments = purchases.reduce((sum, p) => sum + (p.total_amount || p.amount || 0), 0);
@@ -5230,14 +5319,14 @@ async function generateMonthlyReport() {
             const monthName = monthDate.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
             
             // Bu ay için tüm müşterilerin işlemlerini getir
-            const customers = await ipcRenderer.invoke('get-customers');
+            const customers = await window.ipcRenderer.invoke('get-customers');
             let monthSales = 0;
             let monthPayments = 0;
             let transactionCount = 0;
             
             for (const customer of customers) {
-                const sales = await ipcRenderer.invoke('get-sales', customer.id);
-                const purchases = await ipcRenderer.invoke('get-purchases', customer.id);
+                const sales = await window.ipcRenderer.invoke('get-sales', customer.id);
+                const purchases = await window.ipcRenderer.invoke('get-purchases', customer.id);
                 
                 // Bu ay içindeki işlemleri filtrele
                 const monthSalesData = sales.filter(s => {
@@ -5280,7 +5369,7 @@ async function generateProductReport() {
         showNotification('📦 Ürün satış raporu hazırlanıyor...', 'info');
         
         // Tüm müşterileri getir
-        const customers = await ipcRenderer.invoke('get-customers');
+        const customers = await window.ipcRenderer.invoke('get-customers');
         if (!customers || customers.length === 0) {
             showNotification('Müşteri bulunamadı', 'warning');
             return;
@@ -5290,7 +5379,7 @@ async function generateProductReport() {
         const productAnalysis = new Map();
         
         for (const customer of customers) {
-            const sales = await ipcRenderer.invoke('get-sales', customer.id);
+            const sales = await window.ipcRenderer.invoke('get-sales', customer.id);
             
             sales.forEach(sale => {
                 const productName = sale.product_name || sale.description || 'Belirtilmemiş';
@@ -5941,10 +6030,10 @@ let currentFilterType = 'all';
 // Müşterileri arama modal'ı için yükle
 async function loadCustomersForSearch() {
     try {
-        allCustomersForSearch = await ipcRenderer.invoke('get-customers');
+        allCustomersForSearch = await window.ipcRenderer.invoke('get-customers');
         
         // Her müşteri için bakiye hesapla
-        const allTransactions = await ipcRenderer.invoke('get-all-transactions');
+        const allTransactions = await window.ipcRenderer.invoke('get-all-transactions');
         
         allCustomersForSearch = allCustomersForSearch.map(customer => {
             const customerTransactions = allTransactions.filter(t => t.customer_id === customer.id);
@@ -6340,7 +6429,7 @@ function initializeAlertSystem() {
     // Her 5 dakikada bir uyarıları kontrol et
     setInterval(async () => {
         try {
-            const triggeredAlerts = await ipcRenderer.invoke('check-alerts');
+            const triggeredAlerts = await window.ipcRenderer.invoke('check-alerts');
             if (triggeredAlerts.length > 0) {
                 showAlertNotifications(triggeredAlerts);
             }
@@ -6352,7 +6441,7 @@ function initializeAlertSystem() {
     // Sayfa yüklendiğinde de kontrol et
     setTimeout(async () => {
         try {
-            const triggeredAlerts = await ipcRenderer.invoke('check-alerts');
+            const triggeredAlerts = await window.ipcRenderer.invoke('check-alerts');
             if (triggeredAlerts.length > 0) {
                 showAlertNotifications(triggeredAlerts);
             }
