@@ -50,7 +50,12 @@
     "mac": {
       "target": "dmg",
       "icon": "assets/icon.icns",
-      "artifactName": "VeresiyeTakip-${version}.${ext}"
+      "artifactName": "VeresiyeTakip-${version}.${ext}",
+      "category": "public.app-category.business",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "linux": {
       "target": "AppImage",

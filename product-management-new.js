@@ -1053,20 +1053,7 @@ function updateProductManagementDisplay() {
     }
 }
 
-// Modal yardımcı fonksiyonları
-function showOrCreateModal(modalId, modalHtml) {
-    const existingModal = document.getElementById(modalId);
-    if (existingModal) {
-        existingModal.remove();
-    }
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    // Modal'ı aktif hale getir
-    const newModal = document.getElementById(modalId);
-    if (newModal) {
-        newModal.classList.add('active');
-    }
-}
+// Modal yardımcı fonksiyonları (showOrCreateModal renderer.js'de tanımlı)
 
 function closeModal(modalId) {
     const modal = document.getElementById(modalId);

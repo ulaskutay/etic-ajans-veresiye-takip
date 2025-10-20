@@ -1623,23 +1623,11 @@ function closeModal(modalId) {
 
 // Dinamik modal'lar için yardımcı fonksiyon
 function showOrCreateModal(modalId, modalHtml) {
-    let modal = document.getElementById(modalId);
-    
-    if (modal) {
-        // Modal zaten var, sadece göster
-        modal.classList.add('active');
-        console.log(`Existing modal ${modalId} shown`);
-    } else {
-        // Modal yok, oluştur ve göster
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        modal = document.getElementById(modalId);
-        if (modal) {
-            modal.classList.add('active');
-            console.log(`New modal ${modalId} created and shown`);
-        }
+    const existingModal = document.getElementById(modalId);
+    if (existingModal) {
+        existingModal.remove();
     }
-    
-    return modal;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
 // ESC tuşu ile modal kapatma
@@ -8046,33 +8034,37 @@ function showReleaseNotes(notes, version, releaseUrl) {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-// Platform-specific güncelleme indirme
+// Platform-specific güncelleme indirme (hem mapping hem doğrudan URL destekler)
 async function downloadUpdate(downloadUrls) {
     try {
-        const platform = navigator.platform.toLowerCase();
-        let downloadUrl = null;
-        
-        if (platform.includes('win')) {
-            downloadUrl = downloadUrls.windows;
-        } else if (platform.includes('mac')) {
-            downloadUrl = downloadUrls.macos;
-        } else if (platform.includes('linux')) {
-            downloadUrl = downloadUrls.linux;
-        }
-        
-        if (!downloadUrl) {
-            showNotification('Bu platform için güncelleme bulunamadı', 'error');
+        // 1) Eğer buton attribute'unda doğrudan URL varsa onu kullan
+        const btn = document.getElementById('download-btn');
+        const directUrl = btn ? btn.getAttribute('data-download-url') : null;
+        if (!downloadUrls && directUrl) {
+            const res = await window.electronAPI.downloadUpdate(directUrl);
+            if (res && res.success) showNotification('İndirme sayfası açıldı', 'success');
+            else showNotification('İndirme başlatılamadı', 'error');
             return;
         }
-        
-        const result = await window.electronAPI.downloadUpdate(downloadUrl);
-        
-        if (result.success) {
-            showNotification('İndirme sayfası açıldı', 'success');
-        } else {
-            showNotification('İndirme başlatılamadı: ' + result.error, 'error');
+
+        // 2) Eski kullanım: mapping nesnesi verildiyse platforma göre seç
+        const urls = downloadUrls || {};
+        const ua = navigator.userAgent || '';
+        const isWin = ua.includes('Windows');
+        const isMac = ua.includes('Mac');
+        const isLinux = ua.includes('Linux') && !isMac && !isWin;
+        let chosen = null;
+        if (isWin && urls.windows) chosen = urls.windows;
+        if (isMac && urls.macos) chosen = urls.macos;
+        if (isLinux && urls.linux) chosen = urls.linux;
+        if (!chosen && urls.fallback) chosen = urls.fallback;
+        if (!chosen) {
+            showNotification('Bu sürüm için indirme dosyası bulunamadı', 'error');
+            return;
         }
-        
+        const result = await window.electronAPI.downloadUpdate(chosen);
+        if (result && result.success) showNotification('İndirme sayfası açıldı', 'success');
+        else showNotification('İndirme başlatılamadı', 'error');
     } catch (error) {
         console.error('Download update error:', error);
         showNotification('İndirme sırasında hata oluştu', 'error');
