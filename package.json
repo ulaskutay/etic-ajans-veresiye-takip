@@ -1,6 +1,6 @@
 {
   "name": "masaustu-veresiye-takip",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Kısayol tuşları ile hızlı çalışan masaüstü veresiye takip uygulaması",
   "main": "main.js",
   "scripts": {
@@ -40,6 +40,17 @@
       "renderer.js",
       "index.html",
       "styles.css",
+      "alert-system.js",
+      "product-module.js",
+      "product-management-new.js",
+      "excel-import-export.js",
+      "data-manager.js",
+      "config-manager.js",
+      "backup-manager.js",
+      "migration-manager.js",
+      "logger.js",
+      "splash.html",
+      "build/**/*",
       "node_modules/**/*"
     ],
     "win": {
