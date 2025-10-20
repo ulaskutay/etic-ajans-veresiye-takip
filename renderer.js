@@ -4647,7 +4647,10 @@ async function showSettingsModal() {
                         <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; margin-top: 20px;">
                             <div style="padding: 14px 18px; border-bottom: 1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
                                 <h3 style="margin:0; font-size: 16px; color:#374151;">👥 Kullanıcı Yönetimi</h3>
-                                <button onclick="loadUsersList()" style="padding:8px 12px; background:#3b82f6; color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer;">Yenile</button>
+                                <div style="display: flex; gap: 8px;">
+                                    <button onclick="showAddUserModal()" style="padding:8px 12px; background:#10b981; color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer;">➕ Yeni Kullanıcı</button>
+                                    <button onclick="loadUsersList()" style="padding:8px 12px; background:#3b82f6; color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer;">🔄 Yenile</button>
+                                </div>
                             </div>
                             <div id="users-list" style="padding: 12px 16px; min-height: 60px;">
                                 <div style="color:#6b7280;">Yükleniyor...</div>
@@ -7823,6 +7826,103 @@ function updateUserInterface() {
         `;
         
         header.insertAdjacentHTML('beforeend', userInfoHtml);
+    }
+}
+
+// Yeni kullanıcı ekleme modal'ını göster
+function showAddUserModal() {
+    const modalHtml = `
+        <div id="add-user-modal" class="modal active" onclick="if(event.target.id === 'add-user-modal') closeModal('add-user-modal')">
+            <div class="modal-content" style="max-width: 500px;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>➕ Yeni Kullanıcı Ekle</h2>
+                    <button class="close-btn" onclick="closeModal('add-user-modal')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="add-user-form" onsubmit="handleAddUser(event)">
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Ad Soyad *</label>
+                            <input type="text" name="fullName" required
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                                   placeholder="Kullanıcının tam adı">
+                        </div>
+                        
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Kullanıcı Adı *</label>
+                            <input type="text" name="username" required
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                                   placeholder="Benzersiz kullanıcı adı">
+                        </div>
+                        
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">E-posta *</label>
+                            <input type="email" name="email" required
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                                   placeholder="kullanici@example.com">
+                        </div>
+                        
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Şifre *</label>
+                            <input type="password" name="password" required minlength="6"
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                                   placeholder="En az 6 karakter">
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Rol *</label>
+                            <select name="role" required
+                                    style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
+                                <option value="">Rol seçin</option>
+                                <option value="user">👤 Kullanıcı</option>
+                                <option value="admin">👑 Yönetici</option>
+                            </select>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                            <button type="button" onclick="closeModal('add-user-modal')"
+                                    style="padding: 10px 20px; background: #6b7280; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">
+                                İptal
+                            </button>
+                            <button type="submit"
+                                    style="padding: 10px 20px; background: #10b981; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">
+                                ➕ Kullanıcı Ekle
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+// Yeni kullanıcı ekleme işlemi
+async function handleAddUser(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    
+    const userData = {
+        fullName: formData.get('fullName'),
+        username: formData.get('username'),
+        email: formData.get('email'),
+        password: formData.get('password'),
+        role: formData.get('role')
+    };
+    
+    try {
+        const result = await window.electronAPI.registerUser(userData);
+        
+        if (result.success) {
+            showNotification('Kullanıcı başarıyla eklendi', 'success');
+            closeModal('add-user-modal');
+            await loadUsersList(); // Kullanıcı listesini yenile
+        } else {
+            showNotification(result.error || 'Kullanıcı eklenirken hata oluştu', 'error');
+        }
+    } catch (error) {
+        console.error('Add user error:', error);
+        showNotification('Kullanıcı eklenirken hata oluştu', 'error');
     }
 }
 
