@@ -38,7 +38,13 @@ if (typeof window.electronAPI === 'undefined') {
         downloadUpdate: (downloadUrl) => window.ipcRenderer.invoke('download-update', downloadUrl),
         installUpdate: () => window.ipcRenderer.invoke('install-update'),
         getUpdateLogs: () => window.ipcRenderer.invoke('get-update-logs'),
-        updateAppVersion: (version) => window.ipcRenderer.invoke('update-app-version', version)
+        updateAppVersion: (version) => window.ipcRenderer.invoke('update-app-version', version),
+        // Kullanıcı Yönetimi APIs
+        registerUser: (userData) => window.ipcRenderer.invoke('register-user', userData),
+        loginUser: (credentials) => window.ipcRenderer.invoke('login-user', credentials),
+        validateSession: (sessionToken) => window.ipcRenderer.invoke('validate-session', sessionToken),
+        logoutUser: (sessionToken) => window.ipcRenderer.invoke('logout-user', sessionToken),
+        getCurrentUser: (sessionToken) => window.ipcRenderer.invoke('get-current-user', sessionToken)
     };
 }
 
@@ -66,6 +72,15 @@ if (typeof window.brands === 'undefined') {
 }
 if (typeof window.selectedCustomerId === 'undefined') {
     window.selectedCustomerId = null;
+}
+if (typeof window.currentUser === 'undefined') {
+    window.currentUser = null;
+}
+if (typeof window.sessionToken === 'undefined') {
+    window.sessionToken = null;
+}
+if (typeof window.isLoggedIn === 'undefined') {
+    window.isLoggedIn = false;
 }
 
 // Local referanslar
@@ -400,7 +415,8 @@ async function loadCustomers(clearSelection = false) {
             displayCustomers();
         }
         
-        if (document.getElementById('account-summary')) {
+        // Hesap özeti alanları mevcutsa güncelle
+        if (document.getElementById('total-sales')) {
             updateAccountSummary();
         }
         
@@ -775,12 +791,19 @@ function displayPurchases() {
 // Update account summary
 async function updateAccountSummary() {
     try {
+        // Önce müşterileri yükle (eğer yüklenmemişse)
+        if (!customers || customers.length === 0) {
+            await loadCustomers();
+        }
+        
         // Tüm transaction'ları al
         const allTransactions = await window.ipcRenderer.invoke('get-all-transactions');
         
         let totalSales = 0;
         let totalPayments = 0;
         let totalDebt = 0;
+        
+        console.log(`📊 Hesap özeti güncelleniyor: ${customers.length} müşteri, ${allTransactions.length} işlem`);
         
         // Her müşteri için hesaplama yap
         customers.forEach(customer => {
@@ -799,10 +822,14 @@ async function updateAccountSummary() {
             if (customerBalance > 0) {
                 totalDebt += customerBalance;
             }
+            
+            console.log(`👤 ${customer.name}: Satış=${customerTotalSales}, Tahsilat=${customerTotalPayments}, Bakiye=${customerBalance}`);
         });
         
         const netBalance = totalSales - totalPayments;
         const paymentRate = totalSales > 0 ? ((totalPayments / totalSales) * 100).toFixed(1) : 0;
+        
+        console.log(`💰 Toplam: Satış=${totalSales}, Tahsilat=${totalPayments}, Borç=${totalDebt}, Net=${netBalance}`);
         
         // Güncellenmiş değerleri göster (elementler varsa)
         const totalSalesEl = document.getElementById('total-sales');
@@ -2233,20 +2260,36 @@ async function deleteCustomer() {
             currentCustomer = null;
             
             // Detayları temizle
-            document.getElementById('selected-customer-name').textContent = 'Müşteri Seçin';
-            document.getElementById('customer-phone').textContent = '-';
-            document.getElementById('customer-gsm').textContent = '-';
-            document.getElementById('customer-limit').textContent = '0,00';
-            document.getElementById('customer-status').textContent = '-';
-            document.getElementById('customer-debt').textContent = '0,00';
-            document.getElementById('customer-credit').textContent = '0,00';
-            document.getElementById('customer-balance').textContent = '0,00';
-            document.getElementById('last-sale-date').textContent = '-';
-            document.getElementById('last-payment-date').textContent = '-';
+            const elements = {
+                'selected-customer-name': 'Müşteri Seçin',
+                'customer-phone': '-',
+                'customer-gsm': '-',
+                'customer-limit': '0,00',
+                'customer-status': '-',
+                'customer-debt': '0,00',
+                'customer-credit': '0,00',
+                'customer-balance': '0,00',
+                'last-sale-date': '-',
+                'last-payment-date': '-'
+            };
+            
+            Object.entries(elements).forEach(([id, value]) => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.textContent = value;
+                }
+            });
             
             // İşlem tablolarını temizle
-            document.getElementById('sales-table-body').innerHTML = '<tr><td colspan="6" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td></tr>';
-            document.getElementById('purchases-table-body').innerHTML = '<tr><td colspan="6" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td></tr>';
+            const salesTableBody = document.getElementById('sales-table-body');
+            const purchasesTableBody = document.getElementById('purchases-table-body');
+            
+            if (salesTableBody) {
+                salesTableBody.innerHTML = '<tr><td colspan="6" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td></tr>';
+            }
+            if (purchasesTableBody) {
+                purchasesTableBody.innerHTML = '<tr><td colspan="6" class="no-data">&lt;Gösterilecek Bilgi Yok&gt;</td></tr>';
+            }
             
         } else {
             showNotification('Müşteri silinirken hata oluştu', 'error');
@@ -6722,10 +6765,7 @@ async function loadRollbackOptions() {
         const select = document.getElementById('rollback-target-version');
         
         // Select elementi yoksa (basitleştirilmiş versiyonda) skip et
-        if (!select) {
-            console.log('Rollback select element not found, skipping...');
-            return;
-        }
+        if (!select) { return; }
         
         const backups = await window.electronAPI.listBackups();
         
@@ -6770,6 +6810,12 @@ async function createManualBackup() {
 // Yedek listesini göster
 async function showBackupList() {
     try {
+        // Mevcut modalı tamamen kaldır ve taze içerik ile yeniden oluştur
+        const existing = document.getElementById('backup-list-modal');
+        if (existing && existing.parentNode) {
+            existing.parentNode.removeChild(existing);
+        }
+
         const backups = await window.electronAPI.listBackups();
         
         let backupListHtml = `
@@ -6953,6 +6999,8 @@ async function restoreBackup(backupName) {
         if (result.success) {
             showNotification('Yedek başarıyla geri yüklendi', 'success');
             loadVersionInfo(); // Bilgileri yenile
+            // Müşteri listesini güncelle
+            try { await loadCustomers(); } catch (e) { console.warn('loadCustomers after restore failed:', e); }
             closeModal('backup-list-modal');
         } else {
             showNotification('Yedek geri yüklenirken hata oluştu', 'error');
@@ -7039,45 +7087,64 @@ async function checkForUpdates() {
         
         if (!latestVersionEl || !updateStatusEl) return;
         
-        showNotification('Güncellemeler kontrol ediliyor...', 'info');
+        showNotification('GitHub\'dan güncellemeler kontrol ediliyor...', 'info');
         
-        // IPC üzerinden güncelleme kontrolü
+        // GitHub API üzerinden güncelleme kontrolü
         const result = await window.electronAPI.checkForUpdates();
         
-        const latestVersion = result.latestVersion || '1.0.0';
-        const currentVersion = '1.0.0'; // package.json'dan alınabilir
-        
-        latestVersionEl.textContent = latestVersion;
-        
         if (!result.success) {
+            latestVersionEl.textContent = 'Hata';
             updateStatusEl.textContent = result.error || 'Kontrol edilemedi';
             updateStatusEl.style.color = '#ef4444';
             
             if (downloadBtn) downloadBtn.style.display = 'none';
             if (installBtn) installBtn.style.display = 'none';
             
-            showNotification('Güncelleme kontrolü başarısız: ' + (result.error || 'Bilinmeyen hata'), 'error');
+            showNotification('GitHub güncelleme kontrolü başarısız: ' + (result.error || 'Bilinmeyen hata'), 'error');
             return;
         }
         
-        // Version karşılaştırması
-        if (result.isUpToDate) {
-            updateStatusEl.textContent = 'Güncel';
-            updateStatusEl.style.color = '#6b7280';
+        const latestVersion = result.latestVersion || '1.0.0';
+        const currentVersion = result.currentVersion || '1.0.0';
+        
+        latestVersionEl.textContent = latestVersion;
+        
+        if (result.hasUpdate) {
+            updateStatusEl.textContent = `Yeni güncelleme mevcut! (${currentVersion} → ${latestVersion})`;
+            updateStatusEl.style.color = '#f59e0b';
             
-            if (downloadBtn) downloadBtn.style.display = 'none';
-            if (installBtn) installBtn.style.display = 'none';
-        } else if (compareVersions(latestVersion, currentVersion) > 0) {
-            updateStatusEl.textContent = 'Güncelleme mevcut';
-            updateStatusEl.style.color = '#10b981';
-            
+            // Platforma uygun indirme linki var mı?
+            let platformUrl = null;
+            const isMac = navigator.userAgent.includes('Mac');
+            const isWin = navigator.userAgent.includes('Windows');
+            const isLinux = navigator.userAgent.includes('Linux') && !isMac && !isWin;
+            const urls = result.downloadUrls || {};
+            if (isWin && urls.windows) platformUrl = urls.windows;
+            if (isMac && urls.macos) platformUrl = urls.macos;
+            if (isLinux && urls.linux) platformUrl = urls.linux;
+
             if (downloadBtn) {
-                downloadBtn.style.display = 'inline-block';
-                downloadBtn.setAttribute('data-download-url', result.downloadUrl || '');
+                if (platformUrl) {
+                    downloadBtn.style.display = 'inline-block';
+                    downloadBtn.setAttribute('data-download-url', platformUrl);
+                    downloadBtn.onclick = () => downloadUpdate();
+                } else {
+                    // Asset yoksa butonu gizle ve durum mesajı göster
+                    downloadBtn.style.display = 'none';
+                    updateStatusEl.textContent += ' (İndirme dosyası bulunamadı)';
+                }
             }
+            
+            // Release notlarını göster
+            if (result.releaseNotes) {
+                showReleaseNotes(result.releaseNotes, latestVersion, result.releaseUrl);
+            }
+            
+            showNotification(`Yeni güncelleme mevcut: ${latestVersion}`, 'success');
+            
         } else {
-            updateStatusEl.textContent = 'Güncel';
-            updateStatusEl.style.color = '#6b7280';
+            updateStatusEl.textContent = 'Uygulamanız güncel';
+            updateStatusEl.style.color = '#10b981';
             
             if (downloadBtn) downloadBtn.style.display = 'none';
             if (installBtn) installBtn.style.display = 'none';
@@ -7411,5 +7478,394 @@ async function showUpdateLogs() {
     } catch (error) {
         console.error('Show update logs error:', error);
         showNotification('Güncelleme logları yüklenirken hata oluştu', 'error');
+    }
+}
+
+// ==================== KULLANICI YÖNETİMİ FONKSİYONLARI ====================
+
+// Uygulama başlangıcında session kontrolü
+async function initializeUserSession() {
+    try {
+        // LocalStorage'dan session token'ı al
+        const savedToken = localStorage.getItem('sessionToken');
+        if (savedToken) {
+            const result = await window.electronAPI.validateSession(savedToken);
+            if (result.success) {
+                window.currentUser = result.user;
+                window.sessionToken = savedToken;
+                window.isLoggedIn = true;
+                updateUserInterface();
+                console.log('✅ Otomatik giriş başarılı:', result.user.username);
+                return true;
+            } else {
+                // Geçersiz token'ı temizle
+                localStorage.removeItem('sessionToken');
+                localStorage.removeItem('userData');
+            }
+        }
+        
+        // Giriş yapılmamışsa login ekranını göster
+        showLoginModal();
+        return false;
+        
+    } catch (error) {
+        console.error('Session başlatma hatası:', error);
+        showLoginModal();
+        return false;
+    }
+}
+
+// Login modalını göster
+function showLoginModal() {
+    const modalHtml = `
+        <div id="login-modal" class="modal active" style="z-index: 20000;">
+            <div class="modal-content" style="max-width: 400px;">
+                <div class="modal-header">
+                    <h2>🔐 Giriş Yap</h2>
+                </div>
+                <div class="modal-body">
+                    <form id="login-form">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Kullanıcı Adı *</label>
+                            <input type="text" name="username" required 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                                   placeholder="Kullanıcı adınızı girin">
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Şifre *</label>
+                            <input type="password" name="password" required 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                                   placeholder="Şifrenizi girin">
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" name="rememberMe" style="margin-right: 8px;">
+                                <span style="font-size: 14px; color: #374151;">Beni hatırla (30 gün)</span>
+                            </label>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; justify-content: space-between;">
+                            <button type="button" onclick="showRegisterModal()" 
+                                    style="padding: 10px 20px; background: #6b7280; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">
+                                📝 Kayıt Ol
+                            </button>
+                            <button type="submit" 
+                                    style="padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">
+                                🔐 Giriş Yap
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Form submit handler
+    document.getElementById('login-form').addEventListener('submit', handleLogin);
+}
+
+// Register modalını göster
+function showRegisterModal() {
+    // Login modalını kapat
+    const loginModal = document.getElementById('login-modal');
+    if (loginModal) {
+        loginModal.remove();
+    }
+    
+    const modalHtml = `
+        <div id="register-modal" class="modal active" style="z-index: 20000;">
+            <div class="modal-content" style="max-width: 450px;">
+                <div class="modal-header">
+                    <h2>📝 Kayıt Ol</h2>
+                </div>
+                <div class="modal-body">
+                    <form id="register-form">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Ad Soyad *</label>
+                            <input type="text" name="fullName" required 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                                   placeholder="Adınızı ve soyadınızı girin">
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Kullanıcı Adı *</label>
+                            <input type="text" name="username" required 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                                   placeholder="Kullanıcı adınızı girin">
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">E-posta *</label>
+                            <input type="email" name="email" required 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                                   placeholder="E-posta adresinizi girin">
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Şifre *</label>
+                            <input type="password" name="password" required 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                                   placeholder="Şifrenizi girin (min. 6 karakter)">
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Şifre Tekrar *</label>
+                            <input type="password" name="confirmPassword" required 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                                   placeholder="Şifrenizi tekrar girin">
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; justify-content: space-between;">
+                            <button type="button" onclick="showLoginModal()" 
+                                    style="padding: 10px 20px; background: #6b7280; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">
+                                🔐 Giriş Yap
+                            </button>
+                            <button type="submit" 
+                                    style="padding: 10px 20px; background: #10b981; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">
+                                📝 Kayıt Ol
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Form submit handler
+    document.getElementById('register-form').addEventListener('submit', handleRegister);
+}
+
+// Login işlemi
+async function handleLogin(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    
+    const credentials = {
+        username: formData.get('username'),
+        password: formData.get('password'),
+        rememberMe: formData.get('rememberMe') === 'on'
+    };
+    
+    try {
+        const result = await window.electronAPI.loginUser(credentials);
+        
+        if (result.success) {
+            // Session bilgilerini kaydet
+            window.currentUser = result.user;
+            window.sessionToken = result.sessionToken;
+            window.isLoggedIn = true;
+            
+            // LocalStorage'a kaydet
+            if (credentials.rememberMe) {
+                localStorage.setItem('sessionToken', result.sessionToken);
+                localStorage.setItem('userData', JSON.stringify(result.user));
+            }
+            
+            // Modal'ı kapat
+            const loginModal = document.getElementById('login-modal');
+            if (loginModal) {
+                loginModal.remove();
+            }
+            
+            // UI'yi güncelle
+            updateUserInterface();
+            
+            showNotification('Giriş başarılı! Hoş geldiniz ' + result.user.fullName, 'success');
+            
+        } else {
+            showNotification(result.error || 'Giriş başarısız', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Login error:', error);
+        showNotification('Giriş sırasında hata oluştu', 'error');
+    }
+}
+
+// Kayıt işlemi
+async function handleRegister(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    
+    const userData = {
+        fullName: formData.get('fullName'),
+        username: formData.get('username'),
+        email: formData.get('email'),
+        password: formData.get('password'),
+        confirmPassword: formData.get('confirmPassword')
+    };
+    
+    // Şifre kontrolü
+    if (userData.password !== userData.confirmPassword) {
+        showNotification('Şifreler eşleşmiyor', 'error');
+        return;
+    }
+    
+    if (userData.password.length < 6) {
+        showNotification('Şifre en az 6 karakter olmalıdır', 'error');
+        return;
+    }
+    
+    try {
+        const result = await window.electronAPI.registerUser(userData);
+        
+        if (result.success) {
+            showNotification('Kayıt başarılı! Şimdi giriş yapabilirsiniz', 'success');
+            
+            // Register modalını kapat ve login modalını göster
+            const registerModal = document.getElementById('register-modal');
+            if (registerModal) {
+                registerModal.remove();
+            }
+            showLoginModal();
+            
+        } else {
+            showNotification(result.error || 'Kayıt başarısız', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Register error:', error);
+        showNotification('Kayıt sırasında hata oluştu', 'error');
+    }
+}
+
+// Çıkış işlemi
+async function handleLogout() {
+    try {
+        if (window.sessionToken) {
+            await window.electronAPI.logoutUser(window.sessionToken);
+        }
+        
+        // Session bilgilerini temizle
+        window.currentUser = null;
+        window.sessionToken = null;
+        window.isLoggedIn = false;
+        
+        // LocalStorage'ı temizle
+        localStorage.removeItem('sessionToken');
+        localStorage.removeItem('userData');
+        
+        // UI'yi güncelle
+        updateUserInterface();
+        
+        // Login modalını göster
+        showLoginModal();
+        
+        showNotification('Çıkış yapıldı', 'success');
+        
+    } catch (error) {
+        console.error('Logout error:', error);
+        showNotification('Çıkış sırasında hata oluştu', 'error');
+    }
+}
+
+// Kullanıcı arayüzünü güncelle
+function updateUserInterface() {
+    // Kullanıcı bilgilerini header'a ekle
+    const header = document.querySelector('.header');
+    if (header && window.isLoggedIn && window.currentUser) {
+        // Mevcut kullanıcı bilgisi varsa kaldır
+        const existingUserInfo = header.querySelector('.user-info');
+        if (existingUserInfo) {
+            existingUserInfo.remove();
+        }
+        
+        const userInfoHtml = `
+            <div class="user-info" style="display: flex; align-items: center; gap: 15px; margin-left: auto;">
+                <div style="text-align: right;">
+                    <div style="font-weight: 600; color: #374151;">${window.currentUser.fullName}</div>
+                    <div style="font-size: 12px; color: #6b7280;">@${window.currentUser.username}</div>
+                </div>
+                <button onclick="handleLogout()" 
+                        style="padding: 6px 12px; background: #ef4444; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">
+                    🚪 Çıkış
+                </button>
+            </div>
+        `;
+        
+        header.insertAdjacentHTML('beforeend', userInfoHtml);
+    }
+}
+
+// ==================== GITHUB GÜNCELLEME FONKSİYONLARI ====================
+
+// Release notlarını göster
+function showReleaseNotes(notes, version, releaseUrl) {
+    const modalHtml = `
+        <div id="release-notes-modal" class="modal active" onclick="if(event.target.id === 'release-notes-modal') closeModal('release-notes-modal')" style="z-index: 20000;">
+            <div class="modal-content" style="max-width: 600px;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>🚀 Yeni Güncelleme: v${version}</h2>
+                    <button onclick="closeModal('release-notes-modal')" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #3b82f6;">
+                        <h4 style="margin: 0 0 10px 0; color: #1e40af;">📋 Release Notları</h4>
+                        <div style="white-space: pre-wrap; font-family: monospace; font-size: 13px; line-height: 1.5; color: #374151;">
+                            ${notes || 'Release notları bulunamadı.'}
+                        </div>
+                    </div>
+                    
+                    <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #10b981;">
+                        <h4 style="margin: 0 0 10px 0; color: #166534;">💡 Güncelleme Önerisi</h4>
+                        <p style="margin: 0; font-size: 14px; color: #374151;">
+                            Bu güncellemeyi indirmek için aşağıdaki butona tıklayın. İndirme sayfası tarayıcınızda açılacak.
+                        </p>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; justify-content: space-between;">
+                        <button onclick="closeModal('release-notes-modal')" 
+                                style="padding: 10px 20px; background: #6b7280; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">
+                            ❌ Daha Sonra
+                        </button>
+                        <button onclick="window.open('${releaseUrl}', '_blank')" 
+                                style="padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">
+                            🔗 GitHub'da Görüntüle
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+// Platform-specific güncelleme indirme
+async function downloadUpdate(downloadUrls) {
+    try {
+        const platform = navigator.platform.toLowerCase();
+        let downloadUrl = null;
+        
+        if (platform.includes('win')) {
+            downloadUrl = downloadUrls.windows;
+        } else if (platform.includes('mac')) {
+            downloadUrl = downloadUrls.macos;
+        } else if (platform.includes('linux')) {
+            downloadUrl = downloadUrls.linux;
+        }
+        
+        if (!downloadUrl) {
+            showNotification('Bu platform için güncelleme bulunamadı', 'error');
+            return;
+        }
+        
+        const result = await window.electronAPI.downloadUpdate(downloadUrl);
+        
+        if (result.success) {
+            showNotification('İndirme sayfası açıldı', 'success');
+        } else {
+            showNotification('İndirme başlatılamadı: ' + result.error, 'error');
+        }
+        
+    } catch (error) {
+        console.error('Download update error:', error);
+        showNotification('İndirme sırasında hata oluştu', 'error');
     }
 }

@@ -1,196 +1,156 @@
-# 📊 Veresiye Takip - Masaüstü Uygulaması
+# 🏪 Veresiye Takip - Masaüstü Uygulaması
 
-Modern, hızlı ve güvenli masaüstü veresiye takip uygulaması. Electron tabanlı, kısayol tuşları ile çalışan, veri güvenliği odaklı tasarım.
+Modern ve kullanıcı dostu masaüstü veresiye takip uygulaması. Electron tabanlı, çoklu platform desteği ile geliştirilmiştir.
 
 ## ✨ Özellikler
 
-### 🚀 Temel Özellikler
-- **Hızlı Müşteri Yönetimi**: F1-F7 kısayol tuşları ile hızlı işlemler
-- **Ürün Yönetimi**: Stok takibi ve fiyat yönetimi
-- **Satış/Purchase Takibi**: Detaylı işlem geçmişi
-- **Uyarı Sistemi**: Stok ve borç uyarıları
-- **Excel İmport/Export**: Veri aktarımı
-- **PDF Raporları**: Detaylı raporlama
+### 🔐 Kullanıcı Yönetimi
+- **Çoklu kullanıcı desteği**: Her kullanıcının kendi verileri
+- **Güvenli giriş sistemi**: bcrypt ile şifre hashleme
+- **Session yönetimi**: Otomatik giriş ve güvenli çıkış
+- **Rol tabanlı yetkilendirme**: Admin ve kullanıcı rolleri
 
-### 🔒 Veri Güvenliği
-- **Otomatik Yedekleme**: Her migration öncesi otomatik yedek
-- **Migration Sistemi**: Güvenli veri güncelleme
-- **Rollback Desteği**: Hata durumunda geri alma
-- **Single Instance**: Tek kopya çalışma
-- **Content Security Policy**: Güvenlik katmanları
+### 📊 Veri Yönetimi
+- **Müşteri yönetimi**: Detaylı müşteri bilgileri ve borç takibi
+- **Ürün yönetimi**: Stok takibi ve kategori yönetimi
+- **İşlem kayıtları**: Satış ve tahsilat işlemleri
+- **Bakiye hesaplama**: Otomatik ve doğru bakiye hesaplama
 
-### 📁 Veri Yönetimi
-- **Organized Data Structure**: `userData/VeresiyeTakip/` altında düzenli klasör yapısı
-- **Config Management**: JSON tabanlı konfigürasyon
-- **Logging System**: Detaylı log kayıtları
-- **Backup Management**: Otomatik yedekleme ve temizleme
+### 🚨 Uyarı Sistemi
+- **Stok uyarıları**: Minimum stok seviyesi bildirimleri
+- **Borç uyarıları**: Yüksek borçlu müşteri bildirimleri
+- **Özelleştirilebilir**: Kullanıcı tanımlı uyarı kuralları
+- **Gerçek zamanlı**: Anlık bildirimler
 
-## 🛠️ Kurulum
+### 🔄 Otomatik Güncelleme
+- **GitHub entegrasyonu**: Otomatik version kontrolü
+- **Platform desteği**: Windows, macOS, Linux
+- **Release notları**: Detaylı güncelleme bilgileri
+- **Kolay kurulum**: Tek tıkla güncelleme
+
+### 💾 Veri Güvenliği
+- **Otomatik yedekleme**: Günlük veri yedekleri
+- **Migration sistemi**: Güvenli veri güncellemeleri
+- **Rollback desteği**: Hatalı güncellemeleri geri alma
+- **Log sistemi**: Detaylı işlem kayıtları
+
+## 🚀 Kurulum
 
 ### Gereksinimler
-- Node.js 16+
+- Node.js 18+
 - npm veya yarn
-- Electron 25+
+- Git
 
-### Kurulum Adımları
+### Geliştirme Ortamı
 ```bash
-# Repository'yi klonla
+# Repository'yi klonlayın
 git clone https://github.com/ulaskutay/etic-ajans-veresiye-takip.git
 cd etic-ajans-veresiye-takip
 
-# Bağımlılıkları yükle
+# Bağımlılıkları yükleyin
 npm install
 
-# Uygulamayı başlat
+# Uygulamayı başlatın
 npm start
 ```
 
-## 📋 Kullanım
-
-### Kısayol Tuşları
-- **F1**: Yeni Müşteri
-- **F5**: Cari Aç
-- **F6**: Hızlı Borç
-- **F7**: Ödeme Al
-- **F12**: Geliştirici Araçları
-- **Ctrl+R**: Yeniden Yükle
-
-### Veri Yönetimi
+### Production Build
 ```bash
-# Test verisi oluştur
-npm run seed:v0    # v0 formatında test verisi
-npm run seed:v1    # v1 formatında test verisi (createdAt ile)
-npm run seed:v2    # v2 formatında test verisi (appearance ile)
+# Windows için build
+npm run build-win
 
-# Test verilerini temizle
-npm run seed:clear
+# macOS için build
+npm run build-mac
 
-# Test verilerini listele
-npm run seed:list
-
-# Migration testi
-npm run test:migration
+# Linux için build
+npm run build-linux
 ```
 
-## 🏗️ Mimari
+## 📱 Kullanım
 
-### Veri Yapısı
-```
-userData/VeresiyeTakip/
-├── db/                 # Veritabanı dosyaları
-├── config/             # Konfigürasyon dosyaları
-├── backups/            # Otomatik yedekler
-├── logs/               # Log dosyaları
-└── migrations/         # Migration dosyaları
-```
+### İlk Kurulum
+1. Uygulamayı başlatın
+2. İlk kullanıcı hesabınızı oluşturun
+3. Müşteri ve ürün bilgilerinizi ekleyin
+4. Uyarı kurallarınızı tanımlayın
 
-### Sistem Bileşenleri
-- **DataManager**: Klasör yönetimi ve dosya işlemleri
-- **ConfigManager**: Konfigürasyon yönetimi
-- **BackupManager**: Yedekleme ve geri yükleme
-- **MigrationManager**: Veri güncelleme sistemi
-- **Logger**: Log yönetimi
-
-### Migration Sistemi
-- **v1**: `createdAt` alanı ekleme
-- **v2**: Theme yapısını `appearance` olarak güncelleme
-- **v3-v5**: Database schema güncellemeleri
+### Günlük Kullanım
+- **Müşteri ekleme**: Yeni müşterileri sisteme kaydedin
+- **Satış kaydı**: Müşterilere satış yapın
+- **Tahsilat**: Ödemeleri kaydedin
+- **Stok takibi**: Ürün stoklarını kontrol edin
+- **Raporlama**: Detaylı raporlar alın
 
 ## 🔧 Geliştirme
 
 ### Proje Yapısı
 ```
-├── main.js                 # Ana Electron süreci
-├── renderer.js             # Renderer süreci
-├── index.html              # Ana UI
-├── styles.css              # Stil dosyası
+├── main.js                 # Electron ana süreç
+├── renderer.js             # Frontend ana dosyası
+├── index.html              # Ana HTML dosyası
+├── styles.css              # CSS stilleri
+├── alert-system.js         # Uyarı sistemi
+├── product-module.js       # Ürün yönetimi
+├── excel-import-export.js  # Excel entegrasyonu
 ├── data-manager.js         # Veri yönetimi
-├── config-manager.js       # Konfigürasyon yönetimi
+├── config-manager.js       # Konfigürasyon
 ├── backup-manager.js       # Yedekleme sistemi
 ├── migration-manager.js    # Migration sistemi
-├── logger.js               # Log sistemi
-├── seed-data.js            # Test veri oluşturucu
-├── splash.html             # Splash ekranı
-└── package.json             # Proje konfigürasyonu
+└── logger.js               # Log sistemi
 ```
 
-### Build ve Dağıtım
-```bash
-# Development build
-npm run dev
+### Veritabanı Şeması
+- **users**: Kullanıcı bilgileri
+- **user_sessions**: Session yönetimi
+- **customers**: Müşteri bilgileri
+- **products**: Ürün bilgileri
+- **transactions**: İşlem kayıtları
+- **alerts**: Uyarı kuralları
+- **alert_triggers**: Uyarı tetiklemeleri
 
-# Production build
-npm run build
+## 🚀 Release Süreci
 
-# Platform specific builds
-npm run build-win    # Windows
-npm run build-mac    # macOS
-npm run build-linux  # Linux
-```
+### Yeni Version Oluşturma
+1. Değişiklikleri commit edin
+2. Version numarasını güncelleyin (`package.json`)
+3. Git tag oluşturun:
+   ```bash
+   git tag v1.2.2
+   git push origin v1.2.2
+   ```
+4. GitHub Actions otomatik olarak build ve release oluşturacak
 
-## 📊 Veri Güvenliği
-
-### Otomatik Yedekleme
-- Her migration öncesi otomatik yedek
-- Yedek dosyaları `backups/YYYYMMDD_HHmm/` formatında
-- Yedek bilgileri `backup-info.json` ile saklanır
-
-### Migration Güvenliği
-- Migration öncesi otomatik yedek
-- Hata durumunda otomatik geri yükleme
-- Her adımda schema version güncelleme
-- Detaylı log kayıtları
-
-### Rollback Sistemi
-- En son yedeği geri yükleme
-- Belirli yedekten geri yükleme
-- Schema version senkronizasyonu
-
-## 🐛 Hata Ayıklama
-
-### Log Dosyaları
-- `logs/app.log`: Ana log dosyası
-- Otomatik log rotation (10MB limit)
-- Detaylı migration ve backup logları
-
-### Geliştirici Araçları
-- F12 ile DevTools açma
-- Console logları
-- IPC mesaj takibi
-
-## 📝 Lisans
-
-MIT License - Detaylar için `LICENSE` dosyasına bakın.
+### Release Notları
+Her release için detaylı notlar ekleyin:
+- Yeni özellikler
+- Hata düzeltmeleri
+- Performans iyileştirmeleri
+- Breaking changes
 
 ## 🤝 Katkıda Bulunma
 
 1. Fork yapın
 2. Feature branch oluşturun (`git checkout -b feature/amazing-feature`)
-3. Commit yapın (`git commit -m 'Add amazing feature'`)
-4. Push yapın (`git push origin feature/amazing-feature`)
+3. Değişikliklerinizi commit edin (`git commit -m 'Add amazing feature'`)
+4. Branch'inizi push edin (`git push origin feature/amazing-feature`)
 5. Pull Request oluşturun
 
-## 📞 İletişim
+## 📄 Lisans
 
-- **Geliştirici**: Etic Ajans
-- **Repository**: https://github.com/ulaskutay/etic-ajans-veresiye-takip
-- **Versiyon**: 1.0.0
+Bu proje MIT lisansı altında lisanslanmıştır. Detaylar için [LICENSE](LICENSE) dosyasına bakın.
 
-## 🔄 Changelog
+## 📞 Destek
 
-### v1.0.0 (2024-01-15)
-- ✅ Temel veresiye takip sistemi
-- ✅ Kısayol tuşları desteği
-- ✅ Excel import/export
-- ✅ PDF raporlama
-- ✅ Uyarı sistemi
-- ✅ Veri güvenliği sistemi
-- ✅ Migration sistemi
-- ✅ Otomatik yedekleme
-- ✅ Log sistemi
-- ✅ Single instance lock
-- ✅ Content Security Policy
+- **GitHub Issues**: Bug raporları ve özellik istekleri
+- **Email**: support@eticajans.com
+- **Dokümantasyon**: [Wiki sayfası](https://github.com/ulaskutay/etic-ajans-veresiye-takip/wiki)
+
+## 🏆 Teşekkürler
+
+- Electron ekibine harika framework için
+- Better-sqlite3 ekibine performanslı veritabanı için
+- Tüm açık kaynak katkıcılarına
 
 ---
 
-**Not**: Bu uygulama production-ready durumda olup, veri güvenliği ve migration sistemi ile enterprise seviyede güvenilirlik sağlar.
+**Etic Ajans** tarafından geliştirilmiştir. © 2024

@@ -1,0 +1,128 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # v1.0.0, v1.2.1 gibi tag'ler için tetiklenir
+  workflow_dispatch:  # Manuel tetikleme için
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build application
+      run: npm run build
+      
+    - name: Build for Windows
+      if: matrix.os == 'windows-latest'
+      run: npm run build-win
+      
+    - name: Build for macOS
+      if: matrix.os == 'macos-latest'
+      run: npm run build-mac
+      
+    - name: Build for Linux
+      if: matrix.os == 'ubuntu-latest'
+      run: npm run build-linux
+      
+    - name: Upload Windows artifacts
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-build
+        path: dist/*.exe
+        
+    - name: Upload macOS artifacts
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-build
+        path: dist/*.dmg
+        
+    - name: Upload Linux artifacts
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-build
+        path: dist/*.AppImage
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download Windows artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: windows-build
+        path: dist/windows
+        
+    - name: Download macOS artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: macos-build
+        path: dist/macos
+        
+    - name: Download Linux artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: linux-build
+        path: dist/linux
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        body: |
+          ## 🚀 Yeni Güncelleme: ${{ github.ref_name }}
+          
+          ### 📋 Değişiklikler
+          - Kullanıcı yönetimi sistemi eklendi
+          - GitHub tabanlı otomatik güncelleme sistemi
+          - Veri senkronizasyonu iyileştirmeleri
+          - UI/UX geliştirmeleri
+          
+          ### 📥 İndirme
+          Aşağıdaki dosyalardan işletim sisteminize uygun olanı indirin:
+          
+          **Windows:** `VeresiyeTakip-Setup-*.exe`
+          **macOS:** `VeresiyeTakip-*.dmg`
+          **Linux:** `VeresiyeTakip-*.AppImage`
+          
+          ### 🔧 Kurulum
+          1. İndirdiğiniz dosyayı çalıştırın
+          2. Kurulum talimatlarını takip edin
+          3. Uygulamayı başlatın ve giriş yapın
+          
+          ### 📞 Destek
+          Herhangi bir sorun yaşarsanız GitHub Issues sayfasından bildirebilirsiniz.
+        files: |
+          dist/windows/*
+          dist/macos/*
+          dist/linux/*
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -379,6 +379,17 @@ async function importProductsFromExcel() {
     let errorCount = 0;
     
     try {
+        // Kategori/marka cache yoksa taze çek
+        try {
+            if ((!window.categories || window.categories.length === 0) && typeof ipcRenderer !== 'undefined') {
+                window.categories = await ipcRenderer.invoke('get-categories');
+            }
+            if ((!window.brands || window.brands.length === 0) && typeof ipcRenderer !== 'undefined') {
+                window.brands = await ipcRenderer.invoke('get-brands');
+            }
+        } catch (preloadErr) {
+            console.warn('Kategori/marka preload hata:', preloadErr);
+        }
         for (const [index, row] of rows.entries()) {
             if (!row || row.every(cell => !cell)) continue; // Boş satırları atla
             
@@ -512,9 +523,13 @@ async function importProductsFromExcel() {
         if (successCount > 0) {
             showNotification(`✅ ${successCount} ürün başarıyla yüklendi!`, 'success');
             
-            // Ürün modülünü güncelle
-            if (typeof loadProducts === 'function') {
-                await loadProducts();
+            // Ürün/Kategori/Marka verilerini güncelle
+            try {
+                if (typeof loadCategoriesData === 'function') await loadCategoriesData();
+                if (typeof loadBrandsData === 'function') await loadBrandsData();
+                if (typeof loadProductsData === 'function') await loadProductsData();
+            } catch (refreshErr) {
+                console.warn('Excel sonrası veri yenileme uyarısı:', refreshErr);
             }
             
             // Ürün listesini yenile (UI güncellemesi için)
@@ -528,6 +543,13 @@ async function importProductsFromExcel() {
                 console.log('Ürün listesi Excel import sonrası yenilendi:', freshProducts.length, 'ürün');
             }
             
+            // Ürün yönetimi modalı açıksa, filtre dropdownlarını da tazelemek için yeniden oluştur
+            const pmModal = document.getElementById('product-management-modal');
+            if (pmModal && typeof showProductManagement === 'function') {
+                closeProductModal('product-management-modal');
+                setTimeout(() => { try { showProductManagement(); } catch (e) {} }, 50);
+            }
+
             // Modal'ı kapat
             closeExcelImportModal();
         }

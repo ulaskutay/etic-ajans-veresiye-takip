@@ -75,6 +75,7 @@ async function initDatabase() {
         db.exec(`
             CREATE TABLE IF NOT EXISTS customers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL DEFAULT 1, -- Kullanıcıya ait müşteriler
                 name TEXT NOT NULL,
                 code TEXT,
                 phone TEXT,
@@ -111,6 +112,7 @@ async function initDatabase() {
             
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL DEFAULT 1, -- Kullanıcıya ait ürünler
                 name TEXT NOT NULL,
                 code TEXT,
                 barcode TEXT,
@@ -132,6 +134,7 @@ async function initDatabase() {
             
             CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL DEFAULT 1, -- Kullanıcıya ait işlemler
                 customer_id INTEGER,
                 product_id INTEGER,
                 type TEXT NOT NULL,
@@ -163,6 +166,44 @@ async function initDatabase() {
                 invoice_number INTEGER DEFAULT 1,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            -- Kullanıcı Yönetimi Tabloları
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                full_name TEXT NOT NULL,
+                role TEXT DEFAULT 'user', -- 'admin', 'user'
+                is_active INTEGER DEFAULT 1,
+                last_login DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                session_token TEXT UNIQUE NOT NULL,
+                expires_at DATETIME NOT NULL,
+                device_info TEXT,
+                ip_address TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            );
+            
+            CREATE TABLE IF NOT EXISTS user_data_sync (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                table_name TEXT NOT NULL,
+                record_id INTEGER NOT NULL,
+                action TEXT NOT NULL, -- 'create', 'update', 'delete'
+                data TEXT, -- JSON formatında veri
+                sync_status TEXT DEFAULT 'pending', -- 'pending', 'synced', 'conflict'
+                last_sync DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
             );
             
             CREATE TABLE IF NOT EXISTS categories (
@@ -233,6 +274,32 @@ async function initDatabase() {
             await db.run(`ALTER TABLE products ADD COLUMN brand_id INTEGER`);
         } catch (e) {
             // Sütun zaten varsa hata vermez
+        }
+        
+        // Default admin kullanıcısı oluştur (eğer yoksa)
+        try {
+            const bcrypt = require('bcrypt');
+            const existingAdmin = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
+            
+            if (!existingAdmin) {
+                const saltRounds = 10;
+                const passwordHash = await bcrypt.hash('admin123', saltRounds);
+                
+                const stmt = db.prepare(`
+                    INSERT INTO users (username, email, password_hash, full_name, role)
+                    VALUES (?, ?, ?, ?, ?)
+                `);
+                
+                const result = stmt.run('admin', 'admin@eticajans.com', passwordHash, 'Sistem Yöneticisi', 'admin');
+                console.log(`✅ Default admin kullanıcısı oluşturuldu (ID: ${result.lastInsertRowid})`);
+                console.log('🔐 Admin giriş bilgileri:');
+                console.log('   Kullanıcı Adı: admin');
+                console.log('   Şifre: admin123');
+            } else {
+                console.log('ℹ️ Admin kullanıcısı zaten mevcut');
+            }
+        } catch (error) {
+            console.error('❌ Default admin kullanıcısı oluşturulamadı:', error);
         }
         
         console.log('Database initialized successfully');
@@ -1348,63 +1415,116 @@ function setupIpcHandlers() {
     // Version Update IPC Handlers
     ipcMain.handle('check-for-updates', async () => {
         try {
-            // Şimdilik lokal version kontrolü yapıyoruz
-            // Gerçek uygulamada GitHub API veya başka bir update server kullanılabilir
-            
-            const currentVersion = '1.2.1';
-            const latestVersion = '1.2.1'; // Yeni version
-            
-            // Simüle edilmiş güncelleme kontrolü
-            const hasUpdate = false; // Şimdilik güncelleme yok
-            
-            if (hasUpdate) {
-                return {
-                    success: true,
-                    latestVersion: latestVersion,
-                    downloadUrl: '', // Gerçek URL buraya gelecek
-                    releaseNotes: 'Yeni özellikler ve hata düzeltmeleri',
-                    publishedAt: new Date().toISOString()
-                };
-            } else {
-                return {
-                    success: true,
-                    latestVersion: latestVersion,
-                    downloadUrl: '',
-                    releaseNotes: 'Uygulama güncel',
-                    publishedAt: null,
-                    isUpToDate: true
-                };
-            }
-            
+            const https = require('https');
+            const GITHUB_OWNER = 'ulaskutay';
+            const GITHUB_REPO = 'etic-ajans-veresiye-takip';
+            const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+
+            return await new Promise((resolve) => {
+                const req = https.get(GITHUB_API_URL, {
+                    headers: {
+                        'User-Agent': 'VeresiyeTakip-App',
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                }, (res) => {
+                    let body = '';
+                    res.on('data', (c) => body += c);
+                    res.on('end', () => {
+                        try {
+                            if (res.statusCode !== 200) {
+                                // Fallback: tags endpoint
+                                const tagsUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/tags?per_page=1`;
+                                const reqTags = https.get(tagsUrl, { headers: { 'User-Agent': 'VeresiyeTakip-App', 'Accept': 'application/vnd.github.v3+json' } }, (resTags) => {
+                                    let tb = '';
+                                    resTags.on('data', (c2) => tb += c2);
+                                    resTags.on('end', () => {
+                                        try {
+                                            if (resTags.statusCode !== 200) return resolve({ success: false, hasUpdate: false, error: `GitHub HTTP ${res.statusCode}/${resTags.statusCode}` });
+                                            const tags = JSON.parse(tb) || [];
+                                            const latestTag = tags[0]?.name || '0.0.0';
+                                            const latestVersion = latestTag.replace(/^v/, '');
+                                            const currentVersion = '1.2.1';
+                                            const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
+                                            return resolve({ success: true, hasUpdate, currentVersion, latestVersion, releaseNotes: '', downloadUrls: {}, releaseUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases` });
+                                        } catch { return resolve({ success: false, hasUpdate: false, error: 'Tags parse error' }); }
+                                    });
+                                });
+                                reqTags.on('error', () => resolve({ success: false, hasUpdate: false, error: 'Tags network error' }));
+                                reqTags.setTimeout(8000, () => { try { reqTags.destroy(); } catch {} resolve({ success: false, hasUpdate: false, error: 'Tags timeout' }); });
+                                return;
+                            }
+                            const release = JSON.parse(body);
+                            const latestVersion = (release.tag_name || '').replace(/^v/, '') || '0.0.0';
+                            const currentVersion = '1.2.1';
+                            const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
+
+                            const downloadUrls = {};
+                            (release.assets || []).forEach((asset) => {
+                                const name = asset.name || '';
+                                if (name.endsWith('.exe')) downloadUrls.windows = asset.browser_download_url;
+                                if (name.endsWith('.dmg')) downloadUrls.macos = asset.browser_download_url;
+                                if (name.endsWith('.AppImage')) downloadUrls.linux = asset.browser_download_url;
+                            });
+
+                            resolve({
+                                success: true,
+                                hasUpdate,
+                                currentVersion,
+                                latestVersion,
+                                releaseNotes: release.body || '',
+                                publishedAt: release.published_at || null,
+                                downloadUrls,
+                                releaseUrl: release.html_url
+                            });
+                        } catch (e) {
+                            resolve({ success: false, hasUpdate: false, error: 'Parse error' });
+                        }
+                    });
+                });
+                req.on('error', () => resolve({ success: false, hasUpdate: false, error: 'Network error' }));
+                req.setTimeout(10000, () => { try { req.destroy(); } catch {} resolve({ success: false, hasUpdate: false, error: 'Timeout' }); });
+            });
         } catch (error) {
-            console.error('Check for updates error:', error);
-            return { 
-                success: false, 
-                error: error.message,
-                latestVersion: '1.0.0',
-                downloadUrl: '',
-                releaseNotes: '',
-                publishedAt: null
-            };
+            return { success: false, hasUpdate: false, error: error.message };
         }
     });
+    
+    // Version karşılaştırma fonksiyonu
+    function compareVersions(version1, version2) {
+        const v1parts = version1.split('.').map(Number);
+        const v2parts = version2.split('.').map(Number);
+        
+        for (let i = 0; i < Math.max(v1parts.length, v2parts.length); i++) {
+            const v1part = v1parts[i] || 0;
+            const v2part = v2parts[i] || 0;
+            
+            if (v1part > v2part) return 1;
+            if (v1part < v2part) return -1;
+        }
+        
+        return 0;
+    }
 
     ipcMain.handle('download-update', async (event, downloadUrl) => {
         try {
-            // Gerçek uygulamada electron-updater kullanılır
-            // Burada simüle edilmiş bir indirme işlemi
-            return new Promise((resolve) => {
-                setTimeout(() => {
-                    resolve({
-                        success: true,
-                        message: 'Güncelleme indirildi',
-                        filePath: '/tmp/update.zip' // Simüle edilmiş dosya yolu
-                    });
-                }, 2000);
-            });
+            const { shell } = require('electron');
+            
+            console.log('📥 Güncelleme indiriliyor:', downloadUrl);
+            
+            // Tarayıcıda indirme sayfasını aç
+            await shell.openExternal(downloadUrl);
+            
+            return {
+                success: true,
+                message: 'İndirme sayfası açıldı. Lütfen güncellemeyi indirin ve kurun.'
+            };
+            
         } catch (error) {
-            console.error('Download update error:', error);
-            return { success: false, error: error.message };
+            console.error('❌ İndirme hatası:', error);
+            return {
+                success: false,
+                error: error.message
+            };
         }
     });
 
@@ -1428,22 +1548,58 @@ function setupIpcHandlers() {
 
     ipcMain.handle('get-update-logs', async () => {
         try {
-            const logger = getLogger();
-            const logs = logger.getLogs();
-            
-            // Güncelleme ile ilgili logları filtrele
-            const updateLogs = logs.filter(log => 
-                log.message.includes('update') || 
-                log.message.includes('version') ||
-                log.message.includes('migration')
-            );
-            
-            return {
-                success: true,
-                logs: updateLogs.slice(-50) // Son 50 log
-            };
+            const https = require('https');
+            const GITHUB_OWNER = 'ulaskutay';
+            const GITHUB_REPO = 'etic-ajans-veresiye-takip';
+            const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=10`;
+
+            return await new Promise((resolve) => {
+                const req = https.get(GITHUB_API_URL, {
+                    headers: {
+                        'User-Agent': 'VeresiyeTakip-App',
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                }, (res) => {
+                    let body = '';
+                    res.on('data', (c) => body += c);
+                    res.on('end', () => {
+                        try {
+                            if (res.statusCode !== 200) {
+                                // Fallback: tags
+                                const tagsUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/tags?per_page=10`;
+                                const reqTags = https.get(tagsUrl, { headers: { 'User-Agent': 'VeresiyeTakip-App', 'Accept': 'application/vnd.github.v3+json' } }, (resTags) => {
+                                    let tb = '';
+                                    resTags.on('data', (c2) => tb += c2);
+                                    resTags.on('end', () => {
+                                        try {
+                                            if (resTags.statusCode !== 200) return resolve({ success: false, error: `GitHub HTTP ${res.statusCode}/${resTags.statusCode}` });
+                                            const tags = JSON.parse(tb) || [];
+                                            const logs = tags.map((t) => `Tag ${t.name}\n${'='.repeat(50)}`).join('\n\n');
+                                            resolve({ success: true, logs, releases: [] });
+                                        } catch { resolve({ success: false, error: 'Tags parse error' }); }
+                                    });
+                                });
+                                reqTags.on('error', () => resolve({ success: false, error: 'Tags network error' }));
+                                reqTags.setTimeout(8000, () => { try { reqTags.destroy(); } catch {} resolve({ success: false, error: 'Tags timeout' }); });
+                                return;
+                            }
+                            const releases = JSON.parse(body);
+                            const logs = (releases || []).map((r) => {
+                                const v = (r.tag_name || '').replace(/^v/, '');
+                                const date = r.published_at ? new Date(r.published_at).toLocaleDateString('tr-TR') : '-';
+                                const notes = r.body ? r.body.substring(0, 200) + '...' : '';
+                                return `Version ${v} (${date})\n${notes}\n${'='.repeat(50)}`;
+                            }).join('\n\n');
+                            resolve({ success: true, logs, releases });
+                        } catch {
+                            resolve({ success: false, error: 'Parse error' });
+                        }
+                    });
+                });
+                req.on('error', () => resolve({ success: false, error: 'Network error' }));
+                req.setTimeout(10000, () => { try { req.destroy(); } catch {} resolve({ success: false, error: 'Timeout' }); });
+            });
         } catch (error) {
-            console.error('Get update logs error:', error);
             return { success: false, error: error.message };
         }
     });
@@ -1473,6 +1629,157 @@ function setupIpcHandlers() {
             };
         } catch (error) {
             console.error('Update app version error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+    
+    // Kullanıcı Yönetimi IPC Handlers
+    ipcMain.handle('register-user', async (event, userData) => {
+        try {
+            const bcrypt = require('bcrypt');
+            const { username, email, password, fullName } = userData;
+            
+            // Kullanıcı adı ve email kontrolü
+            const existingUser = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email);
+            if (existingUser) {
+                return { success: false, error: 'Kullanıcı adı veya email zaten kullanılıyor' };
+            }
+            
+            // Şifre hashleme
+            const saltRounds = 10;
+            const passwordHash = await bcrypt.hash(password, saltRounds);
+            
+            // Kullanıcı oluştur
+            const stmt = db.prepare(`
+                INSERT INTO users (username, email, password_hash, full_name, role)
+                VALUES (?, ?, ?, ?, ?)
+            `);
+            
+            const result = stmt.run(username, email, passwordHash, fullName, 'user');
+            
+            console.log(`✅ Yeni kullanıcı oluşturuldu: ${username} (ID: ${result.lastInsertRowid})`);
+            return { 
+                success: true, 
+                message: 'Kullanıcı başarıyla oluşturuldu',
+                userId: result.lastInsertRowid 
+            };
+            
+        } catch (error) {
+            console.error('Kullanıcı kayıt hatası:', error);
+            return { success: false, error: error.message };
+        }
+    });
+    
+    ipcMain.handle('login-user', async (event, credentials) => {
+        try {
+            const bcrypt = require('bcrypt');
+            const { username, password, rememberMe } = credentials;
+            
+            // Kullanıcıyı bul
+            const user = db.prepare('SELECT * FROM users WHERE username = ? AND is_active = 1').get(username);
+            if (!user) {
+                return { success: false, error: 'Kullanıcı adı veya şifre hatalı' };
+            }
+            
+            // Şifre kontrolü
+            const isValidPassword = await bcrypt.compare(password, user.password_hash);
+            if (!isValidPassword) {
+                return { success: false, error: 'Kullanıcı adı veya şifre hatalı' };
+            }
+            
+            // Session token oluştur
+            const crypto = require('crypto');
+            const sessionToken = crypto.randomBytes(32).toString('hex');
+            const expiresAt = new Date();
+            expiresAt.setDate(expiresAt.getDate() + (rememberMe ? 30 : 1)); // 30 gün veya 1 gün
+            
+            // Session kaydet
+            const sessionStmt = db.prepare(`
+                INSERT INTO user_sessions (user_id, session_token, expires_at, device_info, ip_address)
+                VALUES (?, ?, ?, ?, ?)
+            `);
+            
+            sessionStmt.run(user.id, sessionToken, expiresAt.toISOString(), 'Desktop App', '127.0.0.1');
+            
+            // Son giriş tarihini güncelle
+            db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+            
+            console.log(`✅ Kullanıcı giriş yaptı: ${username} (ID: ${user.id})`);
+            return {
+                success: true,
+                message: 'Giriş başarılı',
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    fullName: user.full_name,
+                    role: user.role
+                },
+                sessionToken: sessionToken,
+                expiresAt: expiresAt.toISOString()
+            };
+            
+        } catch (error) {
+            console.error('Kullanıcı giriş hatası:', error);
+            return { success: false, error: error.message };
+        }
+    });
+    
+    ipcMain.handle('validate-session', async (event, sessionToken) => {
+        try {
+            if (!sessionToken) {
+                return { success: false, error: 'Session token bulunamadı' };
+            }
+            
+            // Session kontrolü
+            const session = db.prepare(`
+                SELECT s.*, u.username, u.email, u.full_name, u.role
+                FROM user_sessions s
+                JOIN users u ON s.user_id = u.id
+                WHERE s.session_token = ? AND s.expires_at > CURRENT_TIMESTAMP AND u.is_active = 1
+            `).get(sessionToken);
+            
+            if (!session) {
+                return { success: false, error: 'Geçersiz veya süresi dolmuş session' };
+            }
+            
+            return {
+                success: true,
+                user: {
+                    id: session.user_id,
+                    username: session.username,
+                    email: session.email,
+                    fullName: session.full_name,
+                    role: session.role
+                }
+            };
+            
+        } catch (error) {
+            console.error('Session doğrulama hatası:', error);
+            return { success: false, error: error.message };
+        }
+    });
+    
+    ipcMain.handle('logout-user', async (event, sessionToken) => {
+        try {
+            if (sessionToken) {
+                // Session'ı sil
+                db.prepare('DELETE FROM user_sessions WHERE session_token = ?').run(sessionToken);
+                console.log('✅ Kullanıcı çıkış yaptı');
+            }
+            return { success: true, message: 'Çıkış başarılı' };
+        } catch (error) {
+            console.error('Çıkış hatası:', error);
+            return { success: false, error: error.message };
+        }
+    });
+    
+    ipcMain.handle('get-current-user', async (event, sessionToken) => {
+        try {
+            const sessionResult = await ipcMain.handle('validate-session', event, sessionToken);
+            return sessionResult;
+        } catch (error) {
+            console.error('Kullanıcı bilgisi alma hatası:', error);
             return { success: false, error: error.message };
         }
     });

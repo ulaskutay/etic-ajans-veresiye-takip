@@ -893,5 +893,32 @@
     <script src="product-module.js"></script>
     <script src="alert-system.js"></script>
     <script src="renderer.js"></script>
-</body>
-</html>
+    
+    <script>
+        // Uygulama başlangıcında kullanıcı session'ını kontrol et
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('🚀 Uygulama başlatılıyor...');
+            
+            // Kullanıcı session'ını başlat
+            const isLoggedIn = await initializeUserSession();
+            
+            if (isLoggedIn) {
+                console.log('✅ Kullanıcı giriş yapmış, uygulama yükleniyor...');
+                // Uygulama verilerini yükle
+                await loadCustomers();
+                // Ürün modülü fonksiyon adları değişti
+                if (typeof loadProductsData === 'function') await loadProductsData();
+                if (typeof loadCategoriesData === 'function') await loadCategoriesData();
+                if (typeof loadBrandsData === 'function') await loadBrandsData();
+                if (typeof loadAlerts === 'function') await loadAlerts();
+                if (typeof loadAlertTriggers === 'function') await loadAlertTriggers();
+                
+                // Tarih filtrelerini ayarla
+                if (typeof setDefaultDates === 'function') setDefaultDates();
+                
+                console.log('✅ Uygulama başarıyla yüklendi');
+            } else {
+                console.log('🔐 Kullanıcı girişi bekleniyor...');
+            }
+        });
+    </script>

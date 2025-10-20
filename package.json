@@ -8,10 +8,10 @@
     "dev": "electron . --dev",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "electron-builder install-app-deps",
-    "build": "electron-builder",
-    "build-win": "electron-builder --win",
-    "build-mac": "electron-builder --mac",
-    "build-linux": "electron-builder --linux",
+    "build": "electron-builder --publish=never",
+    "build-win": "electron-builder --win --publish=never",
+    "build-mac": "electron-builder --mac --publish=never",
+    "build-linux": "electron-builder --linux --publish=never",
     "seed:v0": "node seed-data.js v0",
     "seed:v1": "node seed-data.js v1",
     "seed:v2": "node seed-data.js v2",
@@ -44,15 +44,18 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "artifactName": "VeresiyeTakip-Setup-${version}.${ext}"
     },
     "mac": {
       "target": "dmg",
-      "icon": "assets/icon.icns"
+      "icon": "assets/icon.icns",
+      "artifactName": "VeresiyeTakip-${version}.${ext}"
     },
     "linux": {
       "target": "AppImage",
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "artifactName": "VeresiyeTakip-${version}.${ext}"
     }
   },
   "devDependencies": {
@@ -61,6 +64,7 @@
     "sqlite3": "^5.1.7"
   },
   "dependencies": {
+    "bcrypt": "^5.1.1",
     "better-sqlite3": "^12.4.1",
     "xlsx": "^0.18.5"
   }
