@@ -13,16 +13,24 @@ ve bu proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) kullanır
 - Çoklu kullanıcı desteği
 - Session yönetimi
 - Güvenli şifre hashleme (bcrypt)
+- **Admin-only kullanıcı yönetimi yetkilendirmesi**
+- **Yeni kullanıcı ekleme özelliği**
+- **Release hazırlık script'i (`prepare-release.sh`)**
+- **Detaylı release süreci dokümantasyonu**
 
 ### Changed
 - Version kontrol sistemi GitHub API ile entegre edildi
 - Güncelleme bildirimleri iyileştirildi
 - Release notları GitHub'dan otomatik çekiliyor
+- **Kullanıcı yönetimi işlemleri sadece admin kullanıcılar için aktif**
 
 ### Fixed
 - Bakiye hesaplama algoritması düzeltildi
 - Müşteri silme hatası giderildi
 - UI iyileştirmeleri yapıldı
+- **macOS Gatekeeper uyumluluğu iyileştirildi**
+- **"Cannot find module" hatası çözüldü**
+- **Raporlar modal'ının sadece 1 kere açılabilmesi sorunu düzeltildi**
 
 ## [1.2.1] - 2024-10-19
 
