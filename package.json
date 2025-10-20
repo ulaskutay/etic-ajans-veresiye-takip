@@ -1,6 +1,6 @@
 {
   "name": "masaustu-veresiye-takip",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Kısayol tuşları ile hızlı çalışan masaüstü veresiye takip uygulaması",
   "main": "main.js",
   "scripts": {
