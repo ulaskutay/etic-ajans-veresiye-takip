@@ -1418,7 +1418,10 @@ function setupIpcHandlers() {
             const https = require('https');
             const GITHUB_OWNER = 'ulaskutay';
             const GITHUB_REPO = 'etic-ajans-veresiye-takip';
-            const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+            const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=5`;
+            const configManager = getConfigManager();
+            const pkg = require('./package.json');
+            const currentVersionResolved = (configManager && configManager.getAppVersion && configManager.getAppVersion()) || pkg.version || '0.0.0';
 
             return await new Promise((resolve) => {
                 const req = https.get(GITHUB_API_URL, {
@@ -1443,7 +1446,7 @@ function setupIpcHandlers() {
                                             const tags = JSON.parse(tb) || [];
                                             const latestTag = tags[0]?.name || '0.0.0';
                                             const latestVersion = latestTag.replace(/^v/, '');
-                                            const currentVersion = '1.2.1';
+                                            const currentVersion = currentVersionResolved;
                                             const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
                                             return resolve({ success: true, hasUpdate, currentVersion, latestVersion, releaseNotes: '', downloadUrls: {}, releaseUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases` });
                                         } catch { return resolve({ success: false, hasUpdate: false, error: 'Tags parse error' }); }
@@ -1453,28 +1456,36 @@ function setupIpcHandlers() {
                                 reqTags.setTimeout(8000, () => { try { reqTags.destroy(); } catch {} resolve({ success: false, hasUpdate: false, error: 'Tags timeout' }); });
                                 return;
                             }
-                            const release = JSON.parse(body);
-                            const latestVersion = (release.tag_name || '').replace(/^v/, '') || '0.0.0';
-                            const currentVersion = '1.2.1';
+                            const releases = JSON.parse(body);
+                            const latestRelease = (Array.isArray(releases) ? releases : [])
+                                .find(r => !r.draft && !r.prerelease) || null;
+                            if (!latestRelease) throw new Error('No published releases');
+                            const latestVersion = (latestRelease.tag_name || '').replace(/^v/, '') || '0.0.0';
+                            const currentVersion = currentVersionResolved;
                             const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
 
                             const downloadUrls = {};
-                            (release.assets || []).forEach((asset) => {
+                            (latestRelease.assets || []).forEach((asset) => {
                                 const name = asset.name || '';
-                                if (name.endsWith('.exe')) downloadUrls.windows = asset.browser_download_url;
-                                if (name.endsWith('.dmg')) downloadUrls.macos = asset.browser_download_url;
-                                if (name.endsWith('.AppImage')) downloadUrls.linux = asset.browser_download_url;
+                                if (/\.exe$/i.test(name) || /\.msi$/i.test(name)) downloadUrls.windows = asset.browser_download_url;
+                                if (/\.dmg$/i.test(name) || /\.pkg$/i.test(name) || /\.zip$/i.test(name)) downloadUrls.macos = asset.browser_download_url;
+                                if (/\.AppImage$/i.test(name) || /\.deb$/i.test(name) || /\.rpm$/i.test(name)) downloadUrls.linux = asset.browser_download_url;
                             });
+                            // Eğer platform spesifik eşleşme yok ama asset varsa ilkini fallback olarak kullan
+                            if (!downloadUrls.windows && !downloadUrls.macos && !downloadUrls.linux && Array.isArray(latestRelease.assets) && latestRelease.assets.length > 0) {
+                                const firstUrl = latestRelease.assets[0].browser_download_url;
+                                downloadUrls.fallback = firstUrl;
+                            }
 
                             resolve({
                                 success: true,
                                 hasUpdate,
                                 currentVersion,
                                 latestVersion,
-                                releaseNotes: release.body || '',
-                                publishedAt: release.published_at || null,
+                                releaseNotes: latestRelease.body || '',
+                                publishedAt: latestRelease.published_at || null,
                                 downloadUrls,
-                                releaseUrl: release.html_url
+                                releaseUrl: latestRelease.html_url
                             });
                         } catch (e) {
                             resolve({ success: false, hasUpdate: false, error: 'Parse error' });
@@ -1599,6 +1610,64 @@ function setupIpcHandlers() {
                 req.on('error', () => resolve({ success: false, error: 'Network error' }));
                 req.setTimeout(10000, () => { try { req.destroy(); } catch {} resolve({ success: false, error: 'Timeout' }); });
             });
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    // ==================== Kullanıcı Yönetimi IPC ====================
+    ipcMain.handle('get-users', async () => {
+        try {
+            const rows = db.prepare(`SELECT id, username, email, full_name, role, is_active, last_login, created_at FROM users ORDER BY created_at DESC`).all();
+            return { success: true, users: rows };
+        } catch (error) {
+            return { success: false, error: error.message, users: [] };
+        }
+    });
+
+    ipcMain.handle('set-user-active', async (event, { userId, isActive }) => {
+        try {
+            db.prepare(`UPDATE users SET is_active = ? WHERE id = ?`).run(isActive ? 1 : 0, userId);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('delete-user', async (event, userId) => {
+        try {
+            // Admin kullanıcısını silmeyi engelle
+            const user = db.prepare('SELECT username FROM users WHERE id = ?').get(userId);
+            if (user && user.username === 'admin') {
+                return { success: false, error: 'Admin kullanıcısı silinemez' };
+            }
+            db.prepare(`DELETE FROM users WHERE id = ?`).run(userId);
+            db.prepare(`DELETE FROM user_sessions WHERE user_id = ?`).run(userId);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('reset-user-password', async (event, { userId, newPassword }) => {
+        try {
+            const bcrypt = require('bcrypt');
+            const saltRounds = 10;
+            const hash = await bcrypt.hash(newPassword, saltRounds);
+            db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).run(hash, userId);
+            // Aktif sessionları iptal et
+            db.prepare(`DELETE FROM user_sessions WHERE user_id = ?`).run(userId);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('update-user', async (event, payload) => {
+        try {
+            const { id, full_name, email, role } = payload;
+            db.prepare(`UPDATE users SET full_name = ?, email = ?, role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(full_name, email, role, id);
+            return { success: true };
         } catch (error) {
             return { success: false, error: error.message };
         }

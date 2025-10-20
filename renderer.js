@@ -909,10 +909,22 @@ async function editSale() {
         document.getElementById('edit-sale-customer').value = currentCustomer.name;
         document.getElementById('edit-sale-customer').readOnly = true;
         
-        // Tarihi otomatik olarak bugünün tarihi yap
-        const today = new Date().toISOString().split('T')[0];
-        document.getElementById('edit-sale-date').value = today;
-        console.log('Date set to today:', today);
+        // Tarihi mevcut işlemin tarihiyle doldur (sıralama bozulmasın)
+        const currentDate = selectedSale.created_at ? new Date(selectedSale.created_at) : new Date();
+        const dateStr = new Date(currentDate.getTime() - currentDate.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+        document.getElementById('edit-sale-date').value = dateStr;
+        console.log('Edit date set to transaction date:', dateStr);
+        // Orijinal timestamp'ı sakla
+        let hidden = document.getElementById('edit-sale-original-created-at');
+        if (!hidden) {
+            hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.id = 'edit-sale-original-created-at';
+            hidden.name = 'original_created_at';
+            const form = document.getElementById('edit-sale-form');
+            if (form) form.appendChild(hidden);
+        }
+        hidden.value = selectedSale.created_at || '';
         
         console.log('Setting amount to:', selectedSale.total_amount || selectedSale.amount);
         document.getElementById('edit-sale-amount').value = selectedSale.total_amount || selectedSale.amount;
@@ -2430,7 +2442,7 @@ function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.style.cssText = `
         position: fixed;
-        top: 20px;
+        bottom: 20px;
         right: 20px;
         padding: 12px 16px;
         border-radius: 6px;
@@ -4492,7 +4504,7 @@ async function showSettingsModal() {
             <div id="settings-modal" class="modal active" onclick="if(event.target.id === 'settings-modal') closeModal('settings-modal')">
                 <div class="modal-content" style="max-width: 1000px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
                 <div class="modal-header">
-                        <h2>⚙️ Firma Ayarları</h2>
+                        <h2>⚙️ Ayarlar</h2>
                     <button class="close-btn" onclick="closeModal('settings-modal')">&times;</button>
                 </div>
                     
@@ -4642,7 +4654,18 @@ async function showSettingsModal() {
                         </button>
                     </div>
                         </form>
-                        
+
+                        <!-- Kullanıcı Yönetimi -->
+                        <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; margin-top: 20px;">
+                            <div style="padding: 14px 18px; border-bottom: 1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+                                <h3 style="margin:0; font-size: 16px; color:#374151;">👥 Kullanıcı Yönetimi</h3>
+                                <button onclick="loadUsersList()" style="padding:8px 12px; background:#3b82f6; color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer;">Yenile</button>
+                            </div>
+                            <div id="users-list" style="padding: 12px 16px; min-height: 60px;">
+                                <div style="color:#6b7280;">Yükleniyor...</div>
+                            </div>
+                        </div>
+
                         <!-- Version Control Section - Basit Versiyon -->
                         <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-top: 30px;">
                             <h4 style="margin: 0 0 15px 0; color: #374151; font-size: 16px;">🔄 Version Kontrol</h4>
@@ -4722,6 +4745,8 @@ async function showSettingsModal() {
     if (modal) {
         modal.classList.add('active');
     }
+    // Kullanıcı listesini yükle
+    loadUsersList();
     
     // Version bilgilerini yükle
     loadVersionInfo();
@@ -6866,6 +6891,16 @@ async function showBackupList() {
                         <button class="close-btn" onclick="closeModal('backup-list-modal')">&times;</button>
                     </div>
                     <div style="padding: 20px;">
+                        <!-- Kullanıcı Yönetimi -->
+                        <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 16px;">
+                            <div style="padding: 12px 16px; border-bottom: 1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+                                <h3 style="margin:0; font-size:16px;">👥 Kullanıcı Yönetimi</h3>
+                                <button onclick="loadUsersList()" style="padding:6px 12px; background:#3b82f6; color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer;">Yenile</button>
+                            </div>
+                            <div id="users-list" style="padding: 12px 16px;">
+                                <div style="color:#6b7280;">Yükleniyor...</div>
+                            </div>
+                        </div>
                         ${backupListHtml}
                     </div>
                 </div>
@@ -7124,9 +7159,10 @@ async function checkForUpdates() {
             if (isLinux && urls.linux) platformUrl = urls.linux;
 
             if (downloadBtn) {
-                if (platformUrl) {
+                const fallbackUrl = (result.downloadUrls && result.downloadUrls.fallback) ? result.downloadUrls.fallback : null;
+                if (platformUrl || fallbackUrl) {
                     downloadBtn.style.display = 'inline-block';
-                    downloadBtn.setAttribute('data-download-url', platformUrl);
+                    downloadBtn.setAttribute('data-download-url', platformUrl || fallbackUrl);
                     downloadBtn.onclick = () => downloadUpdate();
                 } else {
                     // Asset yoksa butonu gizle ve durum mesajı göster
@@ -7423,14 +7459,23 @@ async function showUpdateLogs() {
         const result = await window.electronAPI.getUpdateLogs();
         
         let logsContent = '';
-        if (result.success && result.logs && result.logs.length > 0) {
-            logsContent = result.logs.map(log => {
-                const date = new Date(log.timestamp).toLocaleString('tr-TR');
-                return `<div style="padding: 8px; border-bottom: 1px solid #e5e7eb;">
-                    <strong>${date}</strong> - ${log.message}
-                </div>`;
-            }).join('');
-        } else {
+        if (result && result.success && result.logs) {
+            const logs = result.logs;
+            if (Array.isArray(logs)) {
+                if (logs.length > 0 && typeof logs[0] === 'string') {
+                    logsContent = logs.map(line => `<div style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${line}</div>`).join('');
+                } else {
+                    logsContent = logs.map(log => {
+                        const ts = log.timestamp ? new Date(log.timestamp).toLocaleString('tr-TR') : '';
+                        const msg = log.message || '';
+                        return `<div style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${ts ? `<strong>${ts}</strong> - ` : ''}${msg}</div>`;
+                    }).join('');
+                }
+            } else if (typeof logs === 'string') {
+                logsContent = `<div style="white-space: pre-wrap; font-family: monospace; font-size: 12px;">${logs}</div>`;
+            }
+        }
+        if (!logsContent) {
             logsContent = `
                 <div style="padding: 8px; border-bottom: 1px solid #e5e7eb;">
                     <strong>2024-10-19 22:00:00</strong> - v1.0.0 kuruldu
@@ -7793,6 +7838,170 @@ function updateUserInterface() {
     }
 }
 
+// Kullanıcı listesini yükle ve render et
+async function loadUsersList() {
+    try {
+        const container = document.getElementById('users-list');
+        if (!container) return;
+        container.innerHTML = '<div style="color:#6b7280;">Yükleniyor...</div>';
+        const res = await window.ipcRenderer.invoke('get-users');
+        if (!res.success) {
+            container.innerHTML = `<div style="color:#dc2626;">Hata: ${res.error || 'Kullanıcılar getirilemedi'}</div>`;
+            return;
+        }
+        if (!res.users || res.users.length === 0) {
+            container.innerHTML = '<div style="color:#6b7280;">Kayıtlı kullanıcı yok</div>';
+            return;
+        }
+        const rows = res.users.map(u => `
+            <tr>
+                <td style="padding:8px; border-bottom:1px solid #e5e7eb;">${u.full_name}</td>
+                <td style="padding:8px; border-bottom:1px solid #e5e7eb; color:#6b7280;">@${u.username}</td>
+                <td style="padding:8px; border-bottom:1px solid #e5e7eb;">${u.email || '-'}</td>
+                <td style="padding:8px; border-bottom:1px solid #e5e7eb;">${u.role}</td>
+                <td style="padding:8px; border-bottom:1px solid #e5e7eb;">
+                    <span style="padding:2px 8px; border-radius:12px; font-size:12px; ${u.is_active? 'background:#dcfce7; color:#166534' : 'background:#fee2e2; color:#991b1b'}">${u.is_active? 'Aktif' : 'Pasif'}</span>
+                </td>
+                <td style="padding:8px; border-bottom:1px solid #e5e7eb; text-align:right;">
+                    <button onclick="openEditUserModal(${u.id}, '${u.full_name?.replace(/'/g, "&#39;")}', '${u.email?.replace(/'/g, "&#39;")}', '${u.role}')" style="padding:6px 10px; border:none; border-radius:6px; background:#10b981; color:#fff; font-size:12px; cursor:pointer;">Düzenle</button>
+                    <button onclick="toggleUserActive(${u.id}, ${u.is_active? 'false':'true'})" style="padding:6px 10px; border:none; border-radius:6px; background:#6b7280; color:#fff; font-size:12px; cursor:pointer;">${u.is_active? 'Pasifleştir' : 'Aktifleştir'}</button>
+                    <button onclick="openResetPasswordModal(${u.id})" style="padding:6px 10px; border:none; border-radius:6px; background:#3b82f6; color:#fff; font-size:12px; cursor:pointer;">Şifre Sıfırla</button>
+                    <button onclick="deleteUser(${u.id})" style="padding:6px 10px; border:none; border-radius:6px; background:#ef4444; color:#fff; font-size:12px; cursor:pointer;">Sil</button>
+                </td>
+            </tr>
+        `).join('');
+        container.innerHTML = `
+            <table style="width:100%; border-collapse:collapse;">
+                <thead>
+                    <tr>
+                        <th style="text-align:left; padding:8px; border-bottom:2px solid #e5e7eb;">Ad Soyad</th>
+                        <th style="text-align:left; padding:8px; border-bottom:2px solid #e5e7eb;">Kullanıcı</th>
+                        <th style="text-align:left; padding:8px; border-bottom:2px solid #e5e7eb;">E-posta</th>
+                        <th style="text-align:left; padding:8px; border-bottom:2px solid #e5e7eb;">Rol</th>
+                        <th style="text-align:left; padding:8px; border-bottom:2px solid #e5e7eb;">Durum</th>
+                        <th style="text-align:right; padding:8px; border-bottom:2px solid #e5e7eb;">İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    } catch (error) {
+        const container = document.getElementById('users-list');
+        if (container) container.innerHTML = `<div style="color:#dc2626;">Hata: ${error.message}</div>`;
+    }
+}
+
+function openEditUserModal(userId, fullName, email, role) {
+    const modalHtml = `
+        <div id="edit-user-modal" class="modal active" onclick="if(event.target.id==='edit-user-modal') closeModal('edit-user-modal')">
+            <div class="modal-content" style="max-width:480px;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>👤 Kullanıcı Düzenle</h2>
+                    <button class="close-btn" onclick="closeModal('edit-user-modal')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="edit-user-form" onsubmit="submitEditUser(event)">
+                        <input type="hidden" name="id" value="${userId}">
+                        <div style="margin-bottom:12px;">
+                            <label style="display:block; margin-bottom:6px; font-weight:600;">Ad Soyad</label>
+                            <input type="text" name="fullName" value="${fullName||''}" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px;">
+                        </div>
+                        <div style="margin-bottom:12px;">
+                            <label style="display:block; margin-bottom:6px; font-weight:600;">E-posta</label>
+                            <input type="email" name="email" value="${email||''}" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px;">
+                        </div>
+                        <div style="margin-bottom:12px;">
+                            <label style="display:block; margin-bottom:6px; font-weight:600;">Rol</label>
+                            <select name="role" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px;">
+                                <option value="user" ${role==='user'?'selected':''}>Kullanıcı</option>
+                                <option value="admin" ${role==='admin'?'selected':''}>Admin</option>
+                            </select>
+                        </div>
+                        <div style="display:flex; justify-content:flex-end; gap:10px;">
+                            <button type="button" onclick="closeModal('edit-user-modal')" style="padding:8px 16px; background:#6b7280; color:#fff; border:none; border-radius:6px; font-size:12px;">İptal</button>
+                            <button type="submit" style="padding:8px 16px; background:#10b981; color:#fff; border:none; border-radius:6px; font-size:12px;">Kaydet</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>`;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+async function submitEditUser(e) {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    try {
+        const res = await window.ipcRenderer.invoke('update-user', { id: parseInt(data.id), full_name: data.fullName, email: data.email, role: data.role });
+        if (!res.success) throw new Error(res.error||'Güncelleme başarısız');
+        closeModal('edit-user-modal');
+        loadUsersList();
+        showNotification('Kullanıcı güncellendi','success');
+    } catch(err){ showNotification('Hata: '+err.message,'error'); }
+}
+async function toggleUserActive(userId, active) {
+    try {
+        const res = await window.ipcRenderer.invoke('set-user-active', { userId, isActive: active });
+        if (!res.success) throw new Error(res.error || 'İşlem başarısız');
+        loadUsersList();
+        showNotification('Kullanıcı durumu güncellendi', 'success');
+    } catch (e) { showNotification('Hata: ' + e.message, 'error'); }
+}
+
+async function deleteUser(userId) {
+    if (!confirm('Kullanıcıyı silmek istediğinize emin misiniz?')) return;
+    try {
+        const res = await window.ipcRenderer.invoke('delete-user', userId);
+        if (!res.success) throw new Error(res.error || 'Silme başarısız');
+        loadUsersList();
+        showNotification('Kullanıcı silindi', 'success');
+    } catch (e) { showNotification('Hata: ' + e.message, 'error'); }
+}
+
+function openResetPasswordModal(userId) {
+    const modalHtml = `
+        <div id="reset-password-modal" class="modal active" onclick="if(event.target.id==='reset-password-modal') closeModal('reset-password-modal')">
+            <div class="modal-content" style="max-width:420px;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>🔒 Şifre Sıfırla</h2>
+                    <button class="close-btn" onclick="closeModal('reset-password-modal')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="reset-password-form" onsubmit="submitResetPassword(event)">
+                        <input type="hidden" name="id" value="${userId}">
+                        <div style="margin-bottom:12px;">
+                            <label style="display:block; margin-bottom:6px; font-weight:600;">Yeni Şifre</label>
+                            <input type="password" name="password" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px;" required>
+                        </div>
+                        <div style="margin-bottom:12px;">
+                            <label style="display:block; margin-bottom:6px; font-weight:600;">Yeni Şifre (Tekrar)</label>
+                            <input type="password" name="password2" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px;" required>
+                        </div>
+                        <div style="display:flex; justify-content:flex-end; gap:10px;">
+                            <button type="button" onclick="closeModal('reset-password-modal')" style="padding:8px 16px; background:#6b7280; color:#fff; border:none; border-radius:6px; font-size:12px;">İptal</button>
+                            <button type="submit" style="padding:8px 16px; background:#3b82f6; color:#fff; border:none; border-radius:6px; font-size:12px;">Sıfırla</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>`;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+async function submitResetPassword(e) {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    if (!data.password || data.password.length < 6 || data.password !== data.password2) {
+        showNotification('Şifre en az 6 karakter olmalı ve eşleşmeli', 'warning');
+        return;
+    }
+    try {
+        const res = await window.ipcRenderer.invoke('reset-user-password', { userId: parseInt(data.id), newPassword: data.password });
+        if (!res.success) throw new Error(res.error || 'Şifre sıfırlanamadı');
+        closeModal('reset-password-modal');
+        showNotification('Şifre sıfırlandı', 'success');
+    } catch (e) { showNotification('Hata: ' + e.message, 'error'); }
+}
 // ==================== GITHUB GÜNCELLEME FONKSİYONLARI ====================
 
 // Release notlarını göster
