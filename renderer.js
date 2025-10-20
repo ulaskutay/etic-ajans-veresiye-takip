@@ -4648,7 +4648,10 @@ async function showSettingsModal() {
                             <div style="padding: 14px 18px; border-bottom: 1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
                                 <h3 style="margin:0; font-size: 16px; color:#374151;">👥 Kullanıcı Yönetimi</h3>
                                 <div style="display: flex; gap: 8px;">
-                                    <button onclick="showAddUserModal()" style="padding:8px 12px; background:#10b981; color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer;">➕ Yeni Kullanıcı</button>
+                                    ${window.currentUser && window.currentUser.role === 'admin' ? 
+                                        '<button onclick="showAddUserModal()" style="padding:8px 12px; background:#10b981; color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer;">➕ Yeni Kullanıcı</button>' : 
+                                        ''
+                                    }
                                     <button onclick="loadUsersList()" style="padding:8px 12px; background:#3b82f6; color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer;">🔄 Yenile</button>
                                 </div>
                             </div>
@@ -7831,6 +7834,12 @@ function updateUserInterface() {
 
 // Yeni kullanıcı ekleme modal'ını göster
 function showAddUserModal() {
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     const modalHtml = `
         <div id="add-user-modal" class="modal active" onclick="if(event.target.id === 'add-user-modal') closeModal('add-user-modal')">
             <div class="modal-content" style="max-width: 500px;" onclick="event.stopPropagation()">
@@ -7900,6 +7909,13 @@ function showAddUserModal() {
 // Yeni kullanıcı ekleme işlemi
 async function handleAddUser(event) {
     event.preventDefault();
+    
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     const formData = new FormData(event.target);
     
     const userData = {
@@ -7951,10 +7967,14 @@ async function loadUsersList() {
                     <span style="padding:2px 8px; border-radius:12px; font-size:12px; ${u.is_active? 'background:#dcfce7; color:#166534' : 'background:#fee2e2; color:#991b1b'}">${u.is_active? 'Aktif' : 'Pasif'}</span>
                 </td>
                 <td style="padding:8px; border-bottom:1px solid #e5e7eb; text-align:right;">
-                    <button onclick="openEditUserModal(${u.id}, '${u.full_name?.replace(/'/g, "&#39;")}', '${u.email?.replace(/'/g, "&#39;")}', '${u.role}')" style="padding:6px 10px; border:none; border-radius:6px; background:#10b981; color:#fff; font-size:12px; cursor:pointer;">Düzenle</button>
-                    <button onclick="toggleUserActive(${u.id}, ${u.is_active? 'false':'true'})" style="padding:6px 10px; border:none; border-radius:6px; background:#6b7280; color:#fff; font-size:12px; cursor:pointer;">${u.is_active? 'Pasifleştir' : 'Aktifleştir'}</button>
-                    <button onclick="openResetPasswordModal(${u.id})" style="padding:6px 10px; border:none; border-radius:6px; background:#3b82f6; color:#fff; font-size:12px; cursor:pointer;">Şifre Sıfırla</button>
-                    <button onclick="deleteUser(${u.id})" style="padding:6px 10px; border:none; border-radius:6px; background:#ef4444; color:#fff; font-size:12px; cursor:pointer;">Sil</button>
+                    ${window.currentUser && window.currentUser.role === 'admin' ? `
+                        <button onclick="openEditUserModal(${u.id}, '${u.full_name?.replace(/'/g, "&#39;")}', '${u.email?.replace(/'/g, "&#39;")}', '${u.role}')" style="padding:6px 10px; border:none; border-radius:6px; background:#10b981; color:#fff; font-size:12px; cursor:pointer;">Düzenle</button>
+                        <button onclick="toggleUserActive(${u.id}, ${u.is_active? 'false':'true'})" style="padding:6px 10px; border:none; border-radius:6px; background:#6b7280; color:#fff; font-size:12px; cursor:pointer;">${u.is_active? 'Pasifleştir' : 'Aktifleştir'}</button>
+                        <button onclick="openResetPasswordModal(${u.id})" style="padding:6px 10px; border:none; border-radius:6px; background:#3b82f6; color:#fff; font-size:12px; cursor:pointer;">Şifre Sıfırla</button>
+                        <button onclick="deleteUser(${u.id})" style="padding:6px 10px; border:none; border-radius:6px; background:#ef4444; color:#fff; font-size:12px; cursor:pointer;">Sil</button>
+                    ` : `
+                        <span style="color:#6b7280; font-size:12px;">Sadece görüntüleme</span>
+                    `}
                 </td>
             </tr>
         `).join('');
@@ -7980,6 +8000,12 @@ async function loadUsersList() {
 }
 
 function openEditUserModal(userId, fullName, email, role) {
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     const modalHtml = `
         <div id="edit-user-modal" class="modal active" onclick="if(event.target.id==='edit-user-modal') closeModal('edit-user-modal')">
             <div class="modal-content" style="max-width:480px;" onclick="event.stopPropagation()">
@@ -8018,6 +8044,13 @@ function openEditUserModal(userId, fullName, email, role) {
 
 async function submitEditUser(e) {
     e.preventDefault();
+    
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     const data = Object.fromEntries(new FormData(e.target).entries());
     try {
         const res = await window.ipcRenderer.invoke('update-user', { id: parseInt(data.id), full_name: data.fullName, email: data.email, role: data.role });
@@ -8028,6 +8061,12 @@ async function submitEditUser(e) {
     } catch(err){ showNotification('Hata: '+err.message,'error'); }
 }
 async function toggleUserActive(userId, active) {
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     try {
         const res = await window.ipcRenderer.invoke('set-user-active', { userId, isActive: active });
         if (!res.success) throw new Error(res.error || 'İşlem başarısız');
@@ -8037,6 +8076,12 @@ async function toggleUserActive(userId, active) {
 }
 
 async function deleteUser(userId) {
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     if (!confirm('Kullanıcıyı silmek istediğinize emin misiniz?')) return;
     try {
         const res = await window.ipcRenderer.invoke('delete-user', userId);
@@ -8047,6 +8092,12 @@ async function deleteUser(userId) {
 }
 
 function openResetPasswordModal(userId) {
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     const modalHtml = `
         <div id="reset-password-modal" class="modal active" onclick="if(event.target.id==='reset-password-modal') closeModal('reset-password-modal')">
             <div class="modal-content" style="max-width:420px;" onclick="event.stopPropagation()">
@@ -8078,6 +8129,13 @@ function openResetPasswordModal(userId) {
 
 async function submitResetPassword(e) {
     e.preventDefault();
+    
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     const data = Object.fromEntries(new FormData(e.target).entries());
     if (!data.password || data.password.length < 6 || data.password !== data.password2) {
         showNotification('Şifre en az 6 karakter olmalı ve eşleşmeli', 'warning');
