@@ -1952,8 +1952,6 @@ function createMainWindow() {
         // Menüyü oluştur
         createMenu();
         
-        // Console'u aç (development için)
-        mainWindow.webContents.openDevTools();
         console.log('🔧 Application started');
     });
 }
