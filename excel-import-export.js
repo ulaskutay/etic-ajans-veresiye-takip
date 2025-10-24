@@ -121,18 +121,45 @@ function showExcelImportModal() {
 // Kategori ve marka verilerini yükle
 async function loadCategoriesAndBrandsForExcelImport() {
     try {
+        console.log('Excel Import - Kategori ve marka verileri yükleniyor...');
+        
         // Kategori ve marka verilerini global değişkenlere yükle
-        window.categories = await ipcRenderer.invoke('get-categories');
-        window.brands = await ipcRenderer.invoke('get-brands');
-        console.log('Excel Import - Kategori verileri yüklendi:', window.categories);
-        console.log('Excel Import - Marka verileri yüklendi:', window.brands);
+        const categoriesResult = await ipcRenderer.invoke('get-categories');
+        const brandsResult = await ipcRenderer.invoke('get-brands');
+        
+        // Sonuçları kontrol et
+        if (categoriesResult && categoriesResult.success !== false) {
+            window.categories = categoriesResult;
+            console.log('Excel Import - Kategori verileri yüklendi:', window.categories.length, 'kategori');
+        } else {
+            window.categories = [];
+            console.warn('Excel Import - Kategori verileri yüklenemedi:', categoriesResult);
+        }
+        
+        if (brandsResult && brandsResult.success !== false) {
+            window.brands = brandsResult;
+            console.log('Excel Import - Marka verileri yüklendi:', window.brands.length, 'marka');
+        } else {
+            window.brands = [];
+            console.warn('Excel Import - Marka verileri yüklenemedi:', brandsResult);
+        }
         
         // Eğer kategori/marka yoksa uyarı ver
         if (!window.categories || window.categories.length === 0) {
             console.warn('UYARI: Hiç kategori bulunamadı! Excel import işleminde kategori eşleştirmesi yapılamayacak.');
+            console.warn('Çözüm: Önce kategori ekleyin veya Excel\'de kategori adlarını doğru yazın.');
         }
         if (!window.brands || window.brands.length === 0) {
             console.warn('UYARI: Hiç marka bulunamadı! Excel import işleminde marka eşleştirmesi yapılamayacak.');
+            console.warn('Çözüm: Önce marka ekleyin veya Excel\'de marka adlarını doğru yazın.');
+        }
+        
+        // Debug: Kategori verilerini detaylı kontrol et
+        if (window.categories && window.categories.length > 0) {
+            console.log('Excel Import - Kategori detayları:');
+            window.categories.forEach((category, index) => {
+                console.log(`  ${index + 1}. ${category.name} (ID: ${category.id})`);
+            });
         }
         
         // Debug: Marka verilerini detaylı kontrol et
@@ -144,6 +171,8 @@ async function loadCategoriesAndBrandsForExcelImport() {
         }
     } catch (error) {
         console.error('Kategori ve marka verileri yüklenirken hata:', error);
+        window.categories = [];
+        window.brands = [];
     }
 }
 
@@ -404,8 +433,23 @@ async function importProductsFromExcel() {
                 let category_id = null;
                 if (columnIndexes.category >= 0 && row[columnIndexes.category]) {
                     const categoryName = row[columnIndexes.category]?.toString().trim();
-                    if (categoryName && window.categories && window.categories.length > 0) {
-                        let category = window.categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+                    console.log(`Kategori eşleştirmesi: "${categoryName}"`);
+                    
+                    if (categoryName) {
+                        // Önce mevcut kategoriler arasında ara
+                        let category = null;
+                        if (window.categories && window.categories.length > 0) {
+                            // Tam eşleşme ara
+                            category = window.categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+                            
+                            // Tam eşleşme yoksa kısmi eşleşme ara
+                            if (!category) {
+                                category = window.categories.find(c => 
+                                    c.name.toLowerCase().includes(categoryName.toLowerCase()) || 
+                                    categoryName.toLowerCase().includes(c.name.toLowerCase())
+                                );
+                            }
+                        }
                         
                         if (!category) {
                             // Kategori bulunamadı, otomatik oluştur
@@ -419,6 +463,7 @@ async function importProductsFromExcel() {
                                 category_id = newCategory.id;
                                 
                                 // Global categories array'ini güncelle
+                                if (!window.categories) window.categories = [];
                                 window.categories.push(newCategory);
                                 console.log(`Kategori oluşturuldu: "${categoryName}" (ID: ${newCategory.id})`);
                             } catch (error) {
@@ -426,7 +471,10 @@ async function importProductsFromExcel() {
                             }
                         } else {
                             category_id = category.id;
+                            console.log(`Kategori eşleştirildi: "${categoryName}" -> "${category.name}" (ID: ${category.id})`);
                         }
+                    } else {
+                        console.warn(`Kategori eşleştirilemedi: "${categoryName}" - Kategori adı boş`);
                     }
                 }
                 
@@ -436,16 +484,20 @@ async function importProductsFromExcel() {
                     const brandName = row[columnIndexes.brand]?.toString().trim();
                     console.log(`Marka eşleştirmesi: "${brandName}"`);
                     
-                    if (brandName && window.brands && window.brands.length > 0) {
-                        // Önce tam eşleşme ara
-                        let brand = window.brands.find(b => b.name.toLowerCase() === brandName.toLowerCase());
-                        
-                        // Tam eşleşme yoksa kısmi eşleşme ara
-                        if (!brand) {
-                            brand = window.brands.find(b => 
-                                b.name.toLowerCase().includes(brandName.toLowerCase()) || 
-                                brandName.toLowerCase().includes(b.name.toLowerCase())
-                            );
+                    if (brandName) {
+                        // Önce mevcut markalar arasında ara
+                        let brand = null;
+                        if (window.brands && window.brands.length > 0) {
+                            // Tam eşleşme ara
+                            brand = window.brands.find(b => b.name.toLowerCase() === brandName.toLowerCase());
+                            
+                            // Tam eşleşme yoksa kısmi eşleşme ara
+                            if (!brand) {
+                                brand = window.brands.find(b => 
+                                    b.name.toLowerCase().includes(brandName.toLowerCase()) || 
+                                    brandName.toLowerCase().includes(b.name.toLowerCase())
+                                );
+                            }
                         }
                         
                         if (!brand) {
@@ -460,6 +512,7 @@ async function importProductsFromExcel() {
                                 brand_id = newBrand.id;
                                 
                                 // Global brands array'ini güncelle
+                                if (!window.brands) window.brands = [];
                                 window.brands.push(newBrand);
                                 console.log(`Marka oluşturuldu: "${brandName}" (ID: ${newBrand.id})`);
                             } catch (error) {
@@ -470,7 +523,7 @@ async function importProductsFromExcel() {
                             console.log(`Marka eşleştirildi: "${brandName}" -> "${brand.name}" (ID: ${brand.id})`);
                         }
                     } else {
-                        console.warn(`Marka eşleştirilemedi: "${brandName}" - Marka verileri yok veya boş`);
+                        console.warn(`Marka eşleştirilemedi: "${brandName}" - Marka adı boş`);
                     }
                 }
                 
