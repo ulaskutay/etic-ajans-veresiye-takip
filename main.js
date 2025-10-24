@@ -21,7 +21,7 @@ async function initDatabase() {
         const dbPath = path.join(app.getPath('userData'), 'veresiye.db');
         console.log('Database path:', dbPath);
         
-        db = new Database(dbPath, { verbose: console.log });
+        db = new Database(dbPath);
         
         // Check if we need to migrate existing database
         try {
