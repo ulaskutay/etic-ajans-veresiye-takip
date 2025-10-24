@@ -224,11 +224,10 @@ function createProductRow(product) {
                                     title="Kategoriyi Düzenle">
                                 ✏️
                             </button>
-                            <button onclick="deleteCategory(${product.category_id})" 
-                                    style="padding: 2px 4px; background: #ef4444; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;"
-                                    title="Kategoriyi Sil">
-                                🗑️
-                            </button>
+                            ${window.currentUser && window.currentUser.role === 'admin' ? 
+                                '<button onclick="deleteCategory(' + product.category_id + ')" style="padding: 2px 4px; background: #ef4444; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;" title="Kategoriyi Sil">🗑️</button>' : 
+                                ''
+                            }
                         </div>
                     </div>
                 ` : '<span style="color: #94a3b8;">-</span>'}
@@ -245,11 +244,10 @@ function createProductRow(product) {
                                     title="Markayı Düzenle">
                                 ✏️
                             </button>
-                            <button onclick="deleteBrand(${product.brand_id})" 
-                                    style="padding: 2px 4px; background: #ef4444; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;"
-                                    title="Markayı Sil">
-                                🗑️
-                            </button>
+                            ${window.currentUser && window.currentUser.role === 'admin' ? 
+                                '<button onclick="deleteBrand(' + product.brand_id + ')" style="padding: 2px 4px; background: #ef4444; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;" title="Markayı Sil">🗑️</button>' : 
+                                ''
+                            }
                         </div>
                     </div>
                 ` : '<span style="color: #94a3b8;">-</span>'}
@@ -280,11 +278,10 @@ function createProductRow(product) {
                             title="Düzenle">
                         ✏️
                     </button>
-                    <button onclick="deleteProduct(${product.id})" 
-                            style="padding: 6px; background: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;"
-                            title="Sil">
-                        🗑️
-                    </button>
+                    ${window.currentUser && window.currentUser.role === 'admin' ? 
+                        '<button onclick="deleteProduct(' + product.id + ')" style="padding: 6px; background: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;" title="Sil">🗑️</button>' : 
+                        ''
+                    }
                 </div>
             </td>
         </tr>
@@ -533,6 +530,12 @@ function closeProductManagementModal() {
 
 // Ürün silme
 async function deleteProduct(productId) {
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     const confirmed = confirm('Bu ürünü silmek istediğinizden emin misiniz?');
     if (!confirmed) return;
     
@@ -862,6 +865,12 @@ async function handleEditCategory(event, categoryId) {
 
 // Kategori silme
 window.deleteCategory = async function(categoryId) {
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     const category = productManagementData.categories.find(c => c.id === categoryId);
     if (!category) {
         showNotification('Kategori bulunamadı', 'error');
@@ -990,6 +999,12 @@ async function handleEditBrand(event, brandId) {
 
 // Marka silme
 window.deleteBrand = async function(brandId) {
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     const brand = productManagementData.brands.find(b => b.id === brandId);
     if (!brand) {
         showNotification('Marka bulunamadı', 'error');

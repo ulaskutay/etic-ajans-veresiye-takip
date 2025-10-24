@@ -216,11 +216,10 @@ function createSimpleProductRow(product) {
                             onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">
                         Düzenle
                     </button>
-                    <button onclick="deleteProduct(${product.id})" 
-                            style="background: #fef2f2; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; color: #dc2626; transition: background 0.2s;"
-                            onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fef2f2'">
-                        Sil
-                    </button>
+                    ${window.currentUser && window.currentUser.role === 'admin' ? 
+                        '<button onclick="deleteProduct(' + product.id + ')" style="background: #fef2f2; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; color: #dc2626; transition: background 0.2s;" onmouseover="this.style.background=\'#fee2e2\'" onmouseout="this.style.background=\'#fef2f2\'">Sil</button>' : 
+                        ''
+                    }
                 </div>
             </td>
         </tr>
@@ -544,7 +543,10 @@ function showCategoriesModal() {
                                         <td style="padding: 12px; font-weight: 500;">${cat.name}</td>
                                         <td style="padding: 12px; text-align: center;">
                                             <button onclick="editCategory(${cat.id})" style="background: #f3f4f6; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Düzenle</button>
-                                            <button onclick="deleteCategory(${cat.id})" style="background: #fef2f2; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; color: #dc2626;">Sil</button>
+                                            ${window.currentUser && window.currentUser.role === 'admin' ? 
+                                                '<button onclick="deleteCategory(' + cat.id + ')" style="background: #fef2f2; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; color: #dc2626;">Sil</button>' : 
+                                                ''
+                                            }
                                         </td>
                                     </tr>
                                 `).join('')}
@@ -588,7 +590,10 @@ function showBrandsModal() {
                                         <td style="padding: 12px; font-weight: 500;">${brand.name}</td>
                                         <td style="padding: 12px; text-align: center;">
                                             <button onclick="editBrand(${brand.id})" style="background: #f3f4f6; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Düzenle</button>
-                                            <button onclick="deleteBrand(${brand.id})" style="background: #fef2f2; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; color: #dc2626;">Sil</button>
+                                            ${window.currentUser && window.currentUser.role === 'admin' ? 
+                                                '<button onclick="deleteBrand(' + brand.id + ')" style="background: #fef2f2; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; color: #dc2626;">Sil</button>' : 
+                                                ''
+                                            }
                                         </td>
                                     </tr>
                                 `).join('')}
@@ -778,6 +783,12 @@ async function handleEditProduct(event, id) {
 }
 
 async function deleteProduct(id) {
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     if (!confirm('Bu ürünü silmek istediğinizden emin misiniz?')) return;
     
     try {

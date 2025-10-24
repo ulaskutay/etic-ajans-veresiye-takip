@@ -93,7 +93,36 @@ let categories = window.categories;
 let brands = window.brands;
 let selectedCustomerId = window.selectedCustomerId;
 
-// Sayfa yüklendiğinde
+// Kullanıcı rolüne göre UI elementlerini güncelle
+function updateUIForUserRole() {
+    console.log('updateUIForUserRole çağrıldı, currentUser:', window.currentUser);
+    
+    // Müşteri silme butonlarını kontrol et
+    const deleteCustomerBtn = document.getElementById('delete-customer-btn');
+    const deleteCustomerDetailBtn = document.getElementById('delete-customer-detail-btn');
+    
+    if (deleteCustomerBtn) {
+        const isAdmin = window.currentUser && window.currentUser.role === 'admin';
+        deleteCustomerBtn.style.display = isAdmin ? 'block' : 'none';
+        console.log('delete-customer-btn görünürlüğü:', isAdmin ? 'görünür' : 'gizli');
+    }
+    
+    if (deleteCustomerDetailBtn) {
+        const isAdmin = window.currentUser && window.currentUser.role === 'admin';
+        deleteCustomerDetailBtn.style.display = isAdmin ? 'block' : 'none';
+        console.log('delete-customer-detail-btn görünürlüğü:', isAdmin ? 'görünür' : 'gizli');
+    }
+    
+    // Sistem ayarları sekmesini kontrol et
+    const systemTabBtn = document.getElementById('system-tab-btn');
+    if (systemTabBtn) {
+        const isAdmin = window.currentUser && window.currentUser.role === 'admin';
+        systemTabBtn.style.display = isAdmin ? 'block' : 'none';
+        console.log('system-tab-btn görünürlüğü:', isAdmin ? 'görünür' : 'gizli');
+    }
+}
+
+// Sayfa yüklendiğinde UI'ı güncelle
 document.addEventListener('DOMContentLoaded', async () => {
     loadCustomers();
     await loadCompanySettings();
@@ -102,6 +131,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Uyarı sistemi başlat
     initializeAlertSystem();
+    
+    // UI'ı kullanıcı rolüne göre güncelle
+    updateUIForUserRole();
     
     // IPC listener for global shortcuts
     
@@ -2235,6 +2267,12 @@ async function handleEditCustomer(e) {
 }
 
 async function deleteCustomer() {
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     if (!currentCustomer) {
         showNotification('Önce bir müşteri seçin', 'error');
         return;
@@ -2703,8 +2741,9 @@ function showAbout() {
 }
 
 function exitApp() {
-    if (confirm('Uygulamadan çıkmak istediğinizden emin misiniz?')) {
-        window.close();
+    if (confirm('Çıkış yapmak istediğinizden emin misiniz?\n\nBu işlem kullanıcı oturumunuzu sonlandıracaktır.')) {
+        // Sadece kullanıcı çıkışı yap
+        handleLogout();
     }
 }
 
@@ -4245,10 +4284,10 @@ async function showProductManagement() {
                                                                 style="padding: 6px 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">
                                                             ✏️
                                                         </button>
-                                                        <button onclick="deleteProduct(${product.id})" 
-                                                                style="padding: 6px 12px; background: #ef4444; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">
-                                                            🗑️
-                                                        </button>
+                                                        ${window.currentUser && window.currentUser.role === 'admin' ? 
+                                                            '<button onclick="deleteProduct(' + product.id + ')" style="padding: 6px 12px; background: #ef4444; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">🗑️</button>' : 
+                                                            ''
+                                                        }
                                                     </div>
                                                 </td>
                                             </tr>
@@ -4351,6 +4390,12 @@ function clearProductFilters() {
 
 // Ürün silme
 async function deleteProduct(productId) {
+    // Admin kontrolü
+    if (!window.currentUser || window.currentUser.role !== 'admin') {
+        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        return;
+    }
+    
     if (!confirm('Bu ürünü silmek istediğinizden emin misiniz?')) {
         return;
     }
@@ -4490,18 +4535,38 @@ async function showSettingsModal() {
         
     const modalHtml = `
             <div id="settings-modal" class="modal active" onclick="if(event.target.id === 'settings-modal') closeModal('settings-modal')">
-                <div class="modal-content" style="max-width: 1000px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+                <div class="modal-content" style="max-width: 1200px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
                 <div class="modal-header">
                         <h2>⚙️ Ayarlar</h2>
                     <button class="close-btn" onclick="closeModal('settings-modal')">&times;</button>
                 </div>
                     
                 <div style="padding: 20px;">
-                        <!-- Firma Bilgileri -->
-                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 30px;">
-                            <h3 style="margin: 0 0 10px 0; font-size: 18px;">🏢 Firma Bilgileri</h3>
-                            <p style="margin: 0; font-size: 14px; opacity: 0.9;">Bu bilgiler tüm raporlarda ve faturalarda görünecektir</p>
-                        </div>
+                    <!-- Sekme Navigasyonu -->
+                    <div style="display: flex; gap: 0; margin-bottom: 30px; border-bottom: 2px solid #e5e7eb;">
+                        <button onclick="switchSettingsTab('company')" id="company-tab-btn" 
+                                style="padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 8px 8px 0 0; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                            🏢 Firma Ayarları
+                        </button>
+                        <button onclick="switchSettingsTab('users')" id="users-tab-btn" 
+                                style="padding: 12px 24px; background: #f3f4f6; color: #6b7280; border: none; border-radius: 8px 8px 0 0; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                            👥 Kullanıcı Yönetimi
+                        </button>
+                        ${window.currentUser && window.currentUser.role === 'admin' ? 
+                            '<button onclick="switchSettingsTab(\'system\')" id="system-tab-btn" style="padding: 12px 24px; background: #f3f4f6; color: #6b7280; border: none; border-radius: 8px 8px 0 0; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s;">🔧 Sistem Ayarları</button>' : 
+                            ''
+                        }
+                    </div>
+                    
+                    <!-- Sekme İçerikleri -->
+                    <div id="settings-tab-content">
+                        <!-- Firma Ayarları Sekmesi -->
+                        <div id="company-tab-content" class="settings-tab-content">
+                            <!-- Firma Bilgileri -->
+                            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 30px;">
+                                <h3 style="margin: 0 0 10px 0; font-size: 18px;">🏢 Firma Bilgileri</h3>
+                                <p style="margin: 0; font-size: 14px; opacity: 0.9;">Bu bilgiler tüm raporlarda ve faturalarda görünecektir</p>
+                            </div>
                         
                         <form id="company-settings-form" onsubmit="saveCompanySettings(event)">
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
@@ -4642,86 +4707,82 @@ async function showSettingsModal() {
                         </button>
                     </div>
                         </form>
-
-                        <!-- Kullanıcı Yönetimi -->
-                        <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; margin-top: 20px;">
-                            <div style="padding: 14px 18px; border-bottom: 1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
-                                <h3 style="margin:0; font-size: 16px; color:#374151;">👥 Kullanıcı Yönetimi</h3>
-                                <div style="display: flex; gap: 8px;">
-                                    ${window.currentUser && window.currentUser.role === 'admin' ? 
-                                        '<button onclick="showAddUserModal()" style="padding:8px 12px; background:#10b981; color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer;">➕ Yeni Kullanıcı</button>' : 
-                                        ''
-                                    }
-                                    <button onclick="loadUsersList()" style="padding:8px 12px; background:#3b82f6; color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer;">🔄 Yenile</button>
-                                </div>
-                            </div>
-                            <div id="users-list" style="padding: 12px 16px; min-height: 60px;">
-                                <div style="color:#6b7280;">Yükleniyor...</div>
-                            </div>
                         </div>
-
-                        <!-- Version Control Section - Basit Versiyon -->
-                        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-top: 30px;">
-                            <h4 style="margin: 0 0 15px 0; color: #374151; font-size: 16px;">🔄 Version Kontrol</h4>
-                            
-                            <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb;">
-                                <h5 style="margin: 0 0 10px 0; color: #374151;">📊 Mevcut Durum</h5>
-                                <p style="margin: 5px 0; font-size: 14px;"><strong>Schema Version:</strong> <span id="current-schema-version">Yükleniyor...</span></p>
-                                <p style="margin: 5px 0; font-size: 14px;"><strong>App Version:</strong> <span id="current-app-version">Yükleniyor...</span></p>
-                                <p style="margin: 5px 0; font-size: 14px;"><strong>Son Migration:</strong> <span id="last-migration-date">Yükleniyor...</span></p>
-                                <p style="margin: 5px 0; font-size: 14px;"><strong>Son Yedek:</strong> <span id="last-backup-date">Yükleniyor...</span></p>
-                                
-                                <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-                                    <button onclick="createManualBackup()" 
-                                            style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
-                                        💾 Manuel Yedek
-                                    </button>
-                                    <button onclick="showBackupList()" 
-                                            style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
-                                        📋 Yedek Listesi
-                                    </button>
-                                    <button onclick="showMigrationLogs()" 
-                                            style="padding: 8px 16px; background: #8b5cf6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
-                                        📝 Migration Logları
-                                    </button>
-                                </div>
+                        
+                        <!-- Kullanıcı Yönetimi Sekmesi -->
+                        <div id="users-tab-content" class="settings-tab-content" style="display: none;">
+                            <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 30px;">
+                                <h3 style="margin: 0 0 10px 0; font-size: 18px;">👥 Kullanıcı Yönetimi</h3>
+                                <p style="margin: 0; font-size: 14px; opacity: 0.9;">Sistem kullanıcılarını yönetin ve yetkilendirin</p>
                             </div>
                             
-                            <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb; margin-top: 15px;">
-                                <h5 style="margin: 0 0 10px 0; color: #374151;">🔄 Version Güncelleme</h5>
-                                <p style="margin: 5px 0; font-size: 14px;"><strong>Mevcut Version:</strong> <span id="current-version">Yükleniyor...</span></p>
-                                <p style="margin: 5px 0; font-size: 14px;"><strong>En Son Version:</strong> <span id="latest-version">Kontrol ediliyor...</span></p>
-                                <p style="margin: 5px 0; font-size: 14px;"><strong>Durum:</strong> <span id="update-status">-</span></p>
-                                
-                                <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-                                    <button onclick="checkForUpdates()" 
-                                            style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
-                                        🔍 Güncellemeleri Kontrol Et
-                                    </button>
-                                    <button onclick="manualVersionUpdate()" 
-                                            style="padding: 8px 16px; background: #f59e0b; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
-                                        🔧 Manuel Version Güncelleme
-                                    </button>
-                                    <button onclick="downloadUpdate()" id="download-btn" style="display: none; padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
-                                        ⬇️ Güncellemeyi İndir
-                                    </button>
-                                    <button onclick="installUpdate()" id="install-btn" style="display: none; padding: 8px 16px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
-                                        🚀 Güncellemeyi Kur
-                                    </button>
-                                    <button onclick="showUpdateLogs()" 
-                                            style="padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
-                                        📋 Güncelleme Logları
-                                    </button>
-                                </div>
-                                
-                                <div id="update-progress" style="display: none; margin-top: 15px;">
-                                    <div style="background: #e5e7eb; border-radius: 10px; height: 20px; overflow: hidden;">
-                                        <div id="progress-fill" style="background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                            <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;">
+                                <div style="padding: 14px 18px; border-bottom: 1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+                                    <h3 style="margin:0; font-size: 16px; color:#374151;">👥 Kullanıcı Listesi</h3>
+                                    <div style="display: flex; gap: 8px;">
+                                        ${window.currentUser && window.currentUser.role === 'admin' ? 
+                                            '<button onclick="showAddUserModal()" style="padding:8px 12px; background:#10b981; color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer;">➕ Yeni Kullanıcı</button>' : 
+                                            ''
+                                        }
+                                        <button onclick="loadUsersList()" style="padding:8px 12px; background:#3b82f6; color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer;">🔄 Yenile</button>
                                     </div>
-                                    <div id="progress-text" style="text-align: center; margin-top: 5px; font-size: 12px; color: #6b7280;">İndiriliyor...</div>
+                                </div>
+                                <div id="users-list" style="padding: 12px 16px; min-height: 60px;">
+                                    <div style="color:#6b7280;">Yükleniyor...</div>
                                 </div>
                             </div>
                         </div>
+                        
+                        ${window.currentUser && window.currentUser.role === 'admin' ? 
+                            '<!-- Sistem Ayarları Sekmesi -->' +
+                            '<div id="system-tab-content" class="settings-tab-content" style="display: none;">' +
+                                '<div style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 30px;">' +
+                                    '<h3 style="margin: 0 0 10px 0; font-size: 18px;">🔧 Sistem Ayarları</h3>' +
+                                    '<p style="margin: 0; font-size: 14px; opacity: 0.9;">Sistem yedekleme ve güncelleme ayarları</p>' +
+                                '</div>' : 
+                            ''
+                        }
+
+                            ${window.currentUser && window.currentUser.role === 'admin' ? 
+                                '<!-- Version Control Section - Basit Versiyon -->' +
+                                '<div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">' +
+                                    '<h4 style="margin: 0 0 15px 0; color: #374151; font-size: 16px;">🔄 Version Kontrol</h4>' +
+                                    '<div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb;">' +
+                                        '<h5 style="margin: 0 0 10px 0; color: #374151;">📊 Mevcut Durum</h5>' +
+                                        '<p style="margin: 5px 0; font-size: 14px;"><strong>Schema Version:</strong> <span id="current-schema-version">Yükleniyor...</span></p>' +
+                                        '<p style="margin: 5px 0; font-size: 14px;"><strong>App Version:</strong> <span id="current-app-version">Yükleniyor...</span></p>' +
+                                        '<p style="margin: 5px 0; font-size: 14px;"><strong>Son Migration:</strong> <span id="last-migration-date">Yükleniyor...</span></p>' +
+                                        '<p style="margin: 5px 0; font-size: 14px;"><strong>Son Yedek:</strong> <span id="last-backup-date">Yükleniyor...</span></p>' +
+                                        '<div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">' +
+                                            '<button onclick="createManualBackup()" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">💾 Manuel Yedek</button>' +
+                                            '<button onclick="showBackupList()" style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">📋 Yedek Listesi</button>' +
+                                            '<button onclick="showMigrationLogs()" style="padding: 8px 16px; background: #8b5cf6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">📝 Migration Logları</button>' +
+                                        '</div>' +
+                                    '</div>' +
+                                    '<div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb; margin-top: 15px;">' +
+                                        '<h5 style="margin: 0 0 10px 0; color: #374151;">🔄 Version Güncelleme</h5>' +
+                                        '<p style="margin: 5px 0; font-size: 14px;"><strong>Mevcut Version:</strong> <span id="current-version">Yükleniyor...</span></p>' +
+                                        '<p style="margin: 5px 0; font-size: 14px;"><strong>En Son Version:</strong> <span id="latest-version">Kontrol ediliyor...</span></p>' +
+                                        '<p style="margin: 5px 0; font-size: 14px;"><strong>Durum:</strong> <span id="update-status">-</span></p>' +
+                                        '<div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">' +
+                                            '<button onclick="checkForUpdates()" style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">🔍 Güncellemeleri Kontrol Et</button>' +
+                                            '<button onclick="manualVersionUpdate()" style="padding: 8px 16px; background: #f59e0b; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">🔧 Manuel Version Güncelleme</button>' +
+                                            '<button onclick="downloadUpdate()" id="download-btn" style="display: none; padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">⬇️ Güncellemeyi İndir</button>' +
+                                            '<button onclick="installUpdate()" id="install-btn" style="display: none; padding: 8px 16px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">🚀 Güncellemeyi Kur</button>' +
+                                            '<button onclick="showUpdateLogs()" style="padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">📋 Güncelleme Logları</button>' +
+                                        '</div>' +
+                                        '<div id="update-progress" style="display: none; margin-top: 15px;">' +
+                                            '<div style="background: #e5e7eb; border-radius: 10px; height: 20px; overflow: hidden;">' +
+                                                '<div id="progress-fill" style="background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s ease;"></div>' +
+                                            '</div>' +
+                                            '<div id="progress-text" style="text-align: center; margin-top: 5px; font-size: 12px; color: #6b7280;">İndiriliyor...</div>' +
+                                        '</div>' +
+                                    '</div>' +
+                                '</div>' : 
+                                ''
+                            }
+                        ${window.currentUser && window.currentUser.role === 'admin' ? '</div>' : ''}
+                    </div>
                 </div>
             </div>
         </div>
@@ -4749,6 +4810,40 @@ async function showSettingsModal() {
     } catch (error) {
         console.error('Settings modal error:', error);
         showNotification('Ayarlar yüklenirken hata oluştu', 'error');
+    }
+}
+
+// Sekme değiştirme fonksiyonu
+function switchSettingsTab(tabName) {
+    // Tüm sekme içeriklerini gizle
+    const tabContents = document.querySelectorAll('.settings-tab-content');
+    tabContents.forEach(content => {
+        content.style.display = 'none';
+    });
+    
+    // Tüm sekme butonlarını pasif yap
+    const tabButtons = document.querySelectorAll('[id$="-tab-btn"]');
+    tabButtons.forEach(btn => {
+        btn.style.background = '#f3f4f6';
+        btn.style.color = '#6b7280';
+    });
+    
+    // Seçilen sekmeyi aktif yap
+    const activeTabContent = document.getElementById(`${tabName}-tab-content`);
+    const activeTabButton = document.getElementById(`${tabName}-tab-btn`);
+    
+    if (activeTabContent) {
+        activeTabContent.style.display = 'block';
+    }
+    
+    if (activeTabButton) {
+        activeTabButton.style.background = '#667eea';
+        activeTabButton.style.color = 'white';
+    }
+    
+    // Kullanıcı sekmesine geçildiğinde kullanıcı listesini yükle
+    if (tabName === 'users') {
+        loadUsersList();
     }
 }
 
@@ -6885,16 +6980,6 @@ async function showBackupList() {
                         <button class="close-btn" onclick="closeModal('backup-list-modal')">&times;</button>
                     </div>
                     <div style="padding: 20px;">
-                        <!-- Kullanıcı Yönetimi -->
-                        <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 16px;">
-                            <div style="padding: 12px 16px; border-bottom: 1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
-                                <h3 style="margin:0; font-size:16px;">👥 Kullanıcı Yönetimi</h3>
-                                <button onclick="loadUsersList()" style="padding:6px 12px; background:#3b82f6; color:#fff; border:none; border-radius:6px; font-size:12px; cursor:pointer;">Yenile</button>
-                            </div>
-                            <div id="users-list" style="padding: 12px 16px;">
-                                <div style="color:#6b7280;">Yükleniyor...</div>
-                            </div>
-                        </div>
                         ${backupListHtml}
                     </div>
                 </div>
@@ -7556,49 +7641,249 @@ async function initializeUserSession() {
 
 // Login modalını göster
 function showLoginModal() {
+    // Önce arka planı tamamen gizle
+    const appContainer = document.querySelector('.app-container');
+    if (appContainer) {
+        appContainer.style.display = 'none';
+    }
+    
     const modalHtml = `
-        <div id="login-modal" class="modal active" style="z-index: 20000;">
-            <div class="modal-content" style="max-width: 400px;">
-                <div class="modal-header">
-                    <h2>🔐 Giriş Yap</h2>
+        <div id="login-modal" style="
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 99999;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        ">
+            <div style="
+                background: rgba(255, 255, 255, 0.95);
+                backdrop-filter: blur(20px);
+                border-radius: 24px;
+                padding: 0;
+                width: 90%;
+                max-width: 450px;
+                box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+                overflow: hidden;
+                animation: slideInUp 0.6s ease-out;
+            ">
+                <!-- Header -->
+                <div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    padding: 40px 30px 30px 30px;
+                    text-align: center;
+                    color: white;
+                    position: relative;
+                    overflow: hidden;
+                ">
+                    <div style="
+                        position: absolute;
+                        top: -50%;
+                        left: -50%;
+                        width: 200%;
+                        height: 200%;
+                        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+                        animation: float 6s ease-in-out infinite;
+                    "></div>
+                    <div style="position: relative; z-index: 2;">
+                        <div style="
+                            width: 80px;
+                            height: 80px;
+                            background: rgba(255, 255, 255, 0.2);
+                            border-radius: 50%;
+                            margin: 0 auto 20px auto;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 32px;
+                            backdrop-filter: blur(10px);
+                            border: 2px solid rgba(255, 255, 255, 0.3);
+                        ">
+                            🔐
+                        </div>
+                        <h1 style="
+                            margin: 0 0 8px 0;
+                            font-size: 28px;
+                            font-weight: 700;
+                            letter-spacing: -0.5px;
+                        ">Hoş Geldiniz</h1>
+                        <p style="
+                            margin: 0;
+                            font-size: 16px;
+                            opacity: 0.9;
+                            font-weight: 300;
+                        ">Hesabınıza giriş yapın</p>
+                    </div>
                 </div>
-                <div class="modal-body">
-                    <form id="login-form">
-                        <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Kullanıcı Adı *</label>
-                            <input type="text" name="username" required 
-                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
-                                   placeholder="Kullanıcı adınızı girin">
+                
+                <!-- Form -->
+                <div style="padding: 40px 30px;">
+                    <form id="login-form" style="margin: 0;">
+                        <div style="margin-bottom: 24px;">
+                            <label style="
+                                display: block;
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                                color: #374151;
+                                font-size: 14px;
+                            ">Kullanıcı Adı</label>
+                            <div style="position: relative;">
+                                <input type="text" name="username" required 
+                                       style="
+                                           width: 100%;
+                                           padding: 16px 20px 16px 50px;
+                                           border: 2px solid #e5e7eb;
+                                           border-radius: 12px;
+                                           font-size: 16px;
+                                           outline: none;
+                                           transition: all 0.3s ease;
+                                           background: #f9fafb;
+                                       "
+                                       placeholder="Kullanıcı adınızı girin"
+                                       onfocus="this.style.borderColor='#667eea'; this.style.background='white'; this.style.boxShadow='0 0 0 3px rgba(102, 126, 234, 0.1)'"
+                                       onblur="this.style.borderColor='#e5e7eb'; this.style.background='#f9fafb'; this.style.boxShadow='none'">
+                                <div style="
+                                    position: absolute;
+                                    left: 16px;
+                                    top: 50%;
+                                    transform: translateY(-50%);
+                                    color: #9ca3af;
+                                    font-size: 18px;
+                                ">👤</div>
+                            </div>
                         </div>
                         
-                        <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Şifre *</label>
-                            <input type="password" name="password" required 
-                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
-                                   placeholder="Şifrenizi girin">
+                        <div style="margin-bottom: 24px;">
+                            <label style="
+                                display: block;
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                                color: #374151;
+                                font-size: 14px;
+                            ">Şifre</label>
+                            <div style="position: relative;">
+                                <input type="password" name="password" required 
+                                       style="
+                                           width: 100%;
+                                           padding: 16px 20px 16px 50px;
+                                           border: 2px solid #e5e7eb;
+                                           border-radius: 12px;
+                                           font-size: 16px;
+                                           outline: none;
+                                           transition: all 0.3s ease;
+                                           background: #f9fafb;
+                                       "
+                                       placeholder="Şifrenizi girin"
+                                       onfocus="this.style.borderColor='#667eea'; this.style.background='white'; this.style.boxShadow='0 0 0 3px rgba(102, 126, 234, 0.1)'"
+                                       onblur="this.style.borderColor='#e5e7eb'; this.style.background='#f9fafb'; this.style.boxShadow='none'">
+                                <div style="
+                                    position: absolute;
+                                    left: 16px;
+                                    top: 50%;
+                                    transform: translateY(-50%);
+                                    color: #9ca3af;
+                                    font-size: 18px;
+                                ">🔒</div>
+                            </div>
                         </div>
                         
-                        <div style="margin-bottom: 20px;">
-                            <label style="display: flex; align-items: center; cursor: pointer;">
-                                <input type="checkbox" name="rememberMe" style="margin-right: 8px;">
-                                <span style="font-size: 14px; color: #374151;">Beni hatırla (30 gün)</span>
+                        <div style="margin-bottom: 30px;">
+                            <label style="
+                                display: flex;
+                                align-items: center;
+                                cursor: pointer;
+                                font-size: 14px;
+                                color: #6b7280;
+                            ">
+                                <input type="checkbox" name="rememberMe" 
+                                       style="
+                                           margin-right: 8px;
+                                           width: 18px;
+                                           height: 18px;
+                                           accent-color: #667eea;
+                                       ">
+                                Beni hatırla (30 gün)
                             </label>
                         </div>
                         
-                        <div style="display: flex; gap: 10px; justify-content: space-between;">
-                            <button type="button" onclick="showRegisterModal()" 
-                                    style="padding: 10px 20px; background: #6b7280; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">
-                                📝 Kayıt Ol
-                            </button>
-                            <button type="submit" 
-                                    style="padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">
-                                🔐 Giriş Yap
-                            </button>
-                        </div>
+                        <button type="submit" 
+                                style="
+                                    width: 100%;
+                                    padding: 16px;
+                                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                    color: white;
+                                    border: none;
+                                    border-radius: 12px;
+                                    font-size: 16px;
+                                    font-weight: 600;
+                                    cursor: pointer;
+                                    transition: all 0.3s ease;
+                                    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+                                "
+                                onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(102, 126, 234, 0.6)'"
+                                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(102, 126, 234, 0.4)'">
+                            🚀 Giriş Yap
+                        </button>
                     </form>
+                    
+                    <!-- Kayıt Ol Linki -->
+                    <div style="
+                        text-align: center;
+                        margin-top: 24px;
+                        padding-top: 24px;
+                        border-top: 1px solid #e5e7eb;
+                    ">
+                        <p style="
+                            margin: 0 0 12px 0;
+                            color: #6b7280;
+                            font-size: 14px;
+                        ">Hesabınız yok mu?</p>
+                        <button type="button" onclick="showRegisterModal()" 
+                                style="
+                                    background: none;
+                                    border: none;
+                                    color: #667eea;
+                                    font-size: 14px;
+                                    font-weight: 600;
+                                    cursor: pointer;
+                                    text-decoration: underline;
+                                    transition: color 0.3s ease;
+                                "
+                                onmouseover="this.style.color='#764ba2'"
+                                onmouseout="this.style.color='#667eea'">
+                            📝 Kayıt Ol
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
+        
+        <style>
+            @keyframes slideInUp {
+                from {
+                    opacity: 0;
+                    transform: translateY(30px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+            
+            @keyframes float {
+                0%, 100% {
+                    transform: translateY(0px) rotate(0deg);
+                }
+                50% {
+                    transform: translateY(-20px) rotate(180deg);
+                }
+            }
+        </style>
     `;
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
@@ -7616,59 +7901,302 @@ function showRegisterModal() {
     }
     
     const modalHtml = `
-        <div id="register-modal" class="modal active" style="z-index: 20000;">
-            <div class="modal-content" style="max-width: 450px;">
-                <div class="modal-header">
-                    <h2>📝 Kayıt Ol</h2>
+        <div id="register-modal" style="
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 99999;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        ">
+            <div style="
+                background: rgba(255, 255, 255, 0.95);
+                backdrop-filter: blur(20px);
+                border-radius: 24px;
+                padding: 0;
+                width: 90%;
+                max-width: 500px;
+                box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+                overflow: hidden;
+                animation: slideInUp 0.6s ease-out;
+                max-height: 90vh;
+                overflow-y: auto;
+            ">
+                <!-- Header -->
+                <div style="
+                    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                    padding: 40px 30px 30px 30px;
+                    text-align: center;
+                    color: white;
+                    position: relative;
+                    overflow: hidden;
+                ">
+                    <div style="
+                        position: absolute;
+                        top: -50%;
+                        left: -50%;
+                        width: 200%;
+                        height: 200%;
+                        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+                        animation: float 6s ease-in-out infinite;
+                    "></div>
+                    <div style="position: relative; z-index: 2;">
+                        <div style="
+                            width: 80px;
+                            height: 80px;
+                            background: rgba(255, 255, 255, 0.2);
+                            border-radius: 50%;
+                            margin: 0 auto 20px auto;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 32px;
+                            backdrop-filter: blur(10px);
+                            border: 2px solid rgba(255, 255, 255, 0.3);
+                        ">
+                            📝
+                        </div>
+                        <h1 style="
+                            margin: 0 0 8px 0;
+                            font-size: 28px;
+                            font-weight: 700;
+                            letter-spacing: -0.5px;
+                        ">Kayıt Ol</h1>
+                        <p style="
+                            margin: 0;
+                            font-size: 16px;
+                            opacity: 0.9;
+                            font-weight: 300;
+                        ">Yeni hesap oluşturun</p>
+                    </div>
                 </div>
-                <div class="modal-body">
-                    <form id="register-form">
-                        <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Ad Soyad *</label>
-                            <input type="text" name="fullName" required 
-                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
-                                   placeholder="Adınızı ve soyadınızı girin">
-                        </div>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Kullanıcı Adı *</label>
-                            <input type="text" name="username" required 
-                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
-                                   placeholder="Kullanıcı adınızı girin">
-                        </div>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">E-posta *</label>
-                            <input type="email" name="email" required 
-                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
-                                   placeholder="E-posta adresinizi girin">
-                        </div>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Şifre *</label>
-                            <input type="password" name="password" required 
-                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
-                                   placeholder="Şifrenizi girin (min. 6 karakter)">
+                
+                <!-- Form -->
+                <div style="padding: 40px 30px;">
+                    <form id="register-form" style="margin: 0;">
+                        <div style="margin-bottom: 20px;">
+                            <label style="
+                                display: block;
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                                color: #374151;
+                                font-size: 14px;
+                            ">Ad Soyad</label>
+                            <div style="position: relative;">
+                                <input type="text" name="fullName" required 
+                                       style="
+                                           width: 100%;
+                                           padding: 14px 20px 14px 50px;
+                                           border: 2px solid #e5e7eb;
+                                           border-radius: 12px;
+                                           font-size: 16px;
+                                           outline: none;
+                                           transition: all 0.3s ease;
+                                           background: #f9fafb;
+                                       "
+                                       placeholder="Adınızı ve soyadınızı girin"
+                                       onfocus="this.style.borderColor='#10b981'; this.style.background='white'; this.style.boxShadow='0 0 0 3px rgba(16, 185, 129, 0.1)'"
+                                       onblur="this.style.borderColor='#e5e7eb'; this.style.background='#f9fafb'; this.style.boxShadow='none'">
+                                <div style="
+                                    position: absolute;
+                                    left: 16px;
+                                    top: 50%;
+                                    transform: translateY(-50%);
+                                    color: #9ca3af;
+                                    font-size: 18px;
+                                ">👤</div>
+                            </div>
                         </div>
                         
                         <div style="margin-bottom: 20px;">
-                            <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #374151;">Şifre Tekrar *</label>
-                            <input type="password" name="confirmPassword" required 
-                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
-                                   placeholder="Şifrenizi tekrar girin">
+                            <label style="
+                                display: block;
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                                color: #374151;
+                                font-size: 14px;
+                            ">Kullanıcı Adı</label>
+                            <div style="position: relative;">
+                                <input type="text" name="username" required 
+                                       style="
+                                           width: 100%;
+                                           padding: 14px 20px 14px 50px;
+                                           border: 2px solid #e5e7eb;
+                                           border-radius: 12px;
+                                           font-size: 16px;
+                                           outline: none;
+                                           transition: all 0.3s ease;
+                                           background: #f9fafb;
+                                       "
+                                       placeholder="Kullanıcı adınızı girin"
+                                       onfocus="this.style.borderColor='#10b981'; this.style.background='white'; this.style.boxShadow='0 0 0 3px rgba(16, 185, 129, 0.1)'"
+                                       onblur="this.style.borderColor='#e5e7eb'; this.style.background='#f9fafb'; this.style.boxShadow='none'">
+                                <div style="
+                                    position: absolute;
+                                    left: 16px;
+                                    top: 50%;
+                                    transform: translateY(-50%);
+                                    color: #9ca3af;
+                                    font-size: 18px;
+                                ">🏷️</div>
+                            </div>
                         </div>
                         
-                        <div style="display: flex; gap: 10px; justify-content: space-between;">
-                            <button type="button" onclick="showLoginModal()" 
-                                    style="padding: 10px 20px; background: #6b7280; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">
-                                🔐 Giriş Yap
-                            </button>
-                            <button type="submit" 
-                                    style="padding: 10px 20px; background: #10b981; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">
-                                📝 Kayıt Ol
-                            </button>
+                        <div style="margin-bottom: 20px;">
+                            <label style="
+                                display: block;
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                                color: #374151;
+                                font-size: 14px;
+                            ">E-posta</label>
+                            <div style="position: relative;">
+                                <input type="email" name="email" required 
+                                       style="
+                                           width: 100%;
+                                           padding: 14px 20px 14px 50px;
+                                           border: 2px solid #e5e7eb;
+                                           border-radius: 12px;
+                                           font-size: 16px;
+                                           outline: none;
+                                           transition: all 0.3s ease;
+                                           background: #f9fafb;
+                                       "
+                                       placeholder="E-posta adresinizi girin"
+                                       onfocus="this.style.borderColor='#10b981'; this.style.background='white'; this.style.boxShadow='0 0 0 3px rgba(16, 185, 129, 0.1)'"
+                                       onblur="this.style.borderColor='#e5e7eb'; this.style.background='#f9fafb'; this.style.boxShadow='none'">
+                                <div style="
+                                    position: absolute;
+                                    left: 16px;
+                                    top: 50%;
+                                    transform: translateY(-50%);
+                                    color: #9ca3af;
+                                    font-size: 18px;
+                                ">📧</div>
+                            </div>
                         </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <label style="
+                                display: block;
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                                color: #374151;
+                                font-size: 14px;
+                            ">Şifre</label>
+                            <div style="position: relative;">
+                                <input type="password" name="password" required 
+                                       style="
+                                           width: 100%;
+                                           padding: 14px 20px 14px 50px;
+                                           border: 2px solid #e5e7eb;
+                                           border-radius: 12px;
+                                           font-size: 16px;
+                                           outline: none;
+                                           transition: all 0.3s ease;
+                                           background: #f9fafb;
+                                       "
+                                       placeholder="Şifrenizi girin (min. 6 karakter)"
+                                       onfocus="this.style.borderColor='#10b981'; this.style.background='white'; this.style.boxShadow='0 0 0 3px rgba(16, 185, 129, 0.1)'"
+                                       onblur="this.style.borderColor='#e5e7eb'; this.style.background='#f9fafb'; this.style.boxShadow='none'">
+                                <div style="
+                                    position: absolute;
+                                    left: 16px;
+                                    top: 50%;
+                                    transform: translateY(-50%);
+                                    color: #9ca3af;
+                                    font-size: 18px;
+                                ">🔒</div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 30px;">
+                            <label style="
+                                display: block;
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                                color: #374151;
+                                font-size: 14px;
+                            ">Şifre Tekrar</label>
+                            <div style="position: relative;">
+                                <input type="password" name="confirmPassword" required 
+                                       style="
+                                           width: 100%;
+                                           padding: 14px 20px 14px 50px;
+                                           border: 2px solid #e5e7eb;
+                                           border-radius: 12px;
+                                           font-size: 16px;
+                                           outline: none;
+                                           transition: all 0.3s ease;
+                                           background: #f9fafb;
+                                       "
+                                       placeholder="Şifrenizi tekrar girin"
+                                       onfocus="this.style.borderColor='#10b981'; this.style.background='white'; this.style.boxShadow='0 0 0 3px rgba(16, 185, 129, 0.1)'"
+                                       onblur="this.style.borderColor='#e5e7eb'; this.style.background='#f9fafb'; this.style.boxShadow='none'">
+                                <div style="
+                                    position: absolute;
+                                    left: 16px;
+                                    top: 50%;
+                                    transform: translateY(-50%);
+                                    color: #9ca3af;
+                                    font-size: 18px;
+                                ">🔐</div>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" 
+                                style="
+                                    width: 100%;
+                                    padding: 16px;
+                                    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                                    color: white;
+                                    border: none;
+                                    border-radius: 12px;
+                                    font-size: 16px;
+                                    font-weight: 600;
+                                    cursor: pointer;
+                                    transition: all 0.3s ease;
+                                    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+                                "
+                                onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(16, 185, 129, 0.6)'"
+                                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(16, 185, 129, 0.4)'">
+                            🚀 Kayıt Ol
+                        </button>
                     </form>
+                    
+                    <!-- Giriş Yap Linki -->
+                    <div style="
+                        text-align: center;
+                        margin-top: 24px;
+                        padding-top: 24px;
+                        border-top: 1px solid #e5e7eb;
+                    ">
+                        <p style="
+                            margin: 0 0 12px 0;
+                            color: #6b7280;
+                            font-size: 14px;
+                        ">Zaten hesabınız var mı?</p>
+                        <button type="button" onclick="showLoginModal()" 
+                                style="
+                                    background: none;
+                                    border: none;
+                                    color: #10b981;
+                                    font-size: 14px;
+                                    font-weight: 600;
+                                    cursor: pointer;
+                                    text-decoration: underline;
+                                    transition: color 0.3s ease;
+                                "
+                                onmouseover="this.style.color='#059669'"
+                                onmouseout="this.style.color='#10b981'">
+                            🔐 Giriş Yap
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -7712,8 +8240,15 @@ async function handleLogin(event) {
                 loginModal.remove();
             }
             
+            // Arka planı tekrar göster
+            const appContainer = document.querySelector('.app-container');
+            if (appContainer) {
+                appContainer.style.display = 'block';
+            }
+            
             // UI'yi güncelle
             updateUserInterface();
+            updateUIForUserRole();
             
             showNotification('Giriş başarılı! Hoş geldiniz ' + result.user.fullName, 'success');
             
@@ -7792,6 +8327,7 @@ async function handleLogout() {
         
         // UI'yi güncelle
         updateUserInterface();
+        updateUIForUserRole();
         
         // Login modalını göster
         showLoginModal();

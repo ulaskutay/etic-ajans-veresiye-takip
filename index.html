@@ -31,7 +31,7 @@
                 <button class="header-btn" onclick="showAlertManagement()">🚨 Uyarılar</button>
                 <button class="header-btn" onclick="showReports()">📊 Raporlar</button>
                 <button class="header-btn" onclick="showSettings()">⚙️ Ayarlar</button>
-                <button class="header-btn exit" onclick="exitApp()">❌ Çıkış</button>
+                <button class="header-btn exit" onclick="exitApp()">🚪 Kullanıcı Çıkışı</button>
             </div>
         </header>
 
@@ -112,7 +112,7 @@
                     <button class="account-btn" onclick="showAddCustomerModal()">Hesap Ekle</button>
                     <button class="account-btn" onclick="showExcelCustomerImportModal()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">📊 Excel Import</button>
                     <button class="account-btn" onclick="editCustomer()">Hesap Değiştir</button>
-                    <button class="account-btn" onclick="deleteCustomer()">Hesap Sil</button>
+                    <button class="account-btn" onclick="deleteCustomer()" id="delete-customer-btn" style="display: none;">Hesap Sil</button>
                 </div>
 
                 <!-- Search -->
@@ -188,7 +188,7 @@
                             <button class="customer-action-btn" onclick="addSale()">💰 Satış Ekle</button>
                             <button class="customer-action-btn" onclick="addPurchase()">💳 Tahsilat Ekle</button>
                             <button class="customer-action-btn" onclick="editCustomer()">✏️ Müşteri Düzenle</button>
-                            <button class="customer-action-btn" onclick="deleteCustomer()">🗑️ Müşteri Sil</button>
+                            <button class="customer-action-btn" onclick="deleteCustomer()" id="delete-customer-detail-btn" style="display: none;">🗑️ Müşteri Sil</button>
                         </div>
                     </div>
                 </div>
@@ -709,13 +709,13 @@
                 </div>
                 
                 <div class="form-group">
-                    <label for="sale-date">Tarih *</label>
-                    <input type="date" id="sale-date" required>
+                    <label for="sale-description">Açıklama</label>
+                    <input type="text" id="sale-description" placeholder="Opsiyonel açıklama">
                 </div>
                 
                 <div class="form-group">
-                    <label for="sale-description">Açıklama</label>
-                    <input type="text" id="sale-description" placeholder="Opsiyonel açıklama">
+                    <label for="sale-date">Tarih *</label>
+                    <input type="date" id="sale-date" required>
                 </div>
                 
                 <!-- ÜRÜN SEÇİMİ - OPSIYONEL, ALTTA -->
