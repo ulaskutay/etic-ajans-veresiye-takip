@@ -31,7 +31,6 @@
                 <button class="header-btn" onclick="showAlertManagement()">🚨 Uyarılar</button>
                 <button class="header-btn" onclick="showReports()">📊 Raporlar</button>
                 <button class="header-btn" onclick="showSettings()">⚙️ Ayarlar</button>
-                <button class="header-btn exit" onclick="exitApp()">🚪 Kullanıcı Çıkışı</button>
             </div>
         </header>
 
@@ -785,38 +784,6 @@
         </div>
     </div>
 
-    <!-- Product Management Modal -->
-    <div id="product-management-modal" class="modal">
-        <div class="modal-content" style="max-width: 800px;">
-            <div class="modal-header">
-                <h3>Ürün Yönetimi</h3>
-                <button class="close-btn" onclick="closeModal('product-management-modal')">&times;</button>
-            </div>
-            <div style="padding: 16px;">
-                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
-                    <button class="btn btn-primary" onclick="showAddProductModal()">Ürün Ekle</button>
-                    <button class="btn btn-secondary" onclick="loadProducts()">Yenile</button>
-                </div>
-                <div class="product-list">
-                    <table class="customer-table" style="width: 100%;">
-                        <thead>
-                            <tr>
-                                <th>Ürün Adı</th>
-                                <th>Kod</th>
-                                <th>Birim</th>
-                                <th>Satış Fiyatı</th>
-                                <th>Stok</th>
-                                <th>İşlemler</th>
-                            </tr>
-                        </thead>
-                        <tbody id="product-table-body">
-                            <!-- Products will be loaded here -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Eski Add Product Modal kaldırıldı - artık product-module.js'de dinamik oluşturuluyor -->
 
@@ -888,8 +855,115 @@
         </div>
     </div>
 
+    <!-- İlk Kurulum Modal -->
+    <div id="first-time-setup-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>🎉 Hoş Geldiniz!</h2>
+                <p>Veresiye Takip uygulamasını kullanmaya başlamak için bilgilerinizi girin</p>
+            </div>
+            <div class="modal-body">
+                <form id="first-time-registration-form">
+                    <div class="form-group">
+                        <label for="company-name">🏢 Şirket Adı *</label>
+                        <input type="text" id="company-name" name="companyName" required 
+                               placeholder="Şirketinizin adını girin">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="full-name">👤 Ad Soyad *</label>
+                        <input type="text" id="full-name" name="fullName" required 
+                               placeholder="Adınızı ve soyadınızı girin">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="email">📧 E-posta Adresi *</label>
+                        <input type="email" id="email" name="email" required 
+                               placeholder="ornek@email.com">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="phone">📱 Telefon Numarası *</label>
+                        <input type="tel" id="phone" name="phone" required 
+                               placeholder="0555 123 45 67">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">🔒 Şifre *</label>
+                        <input type="password" id="password" name="password" required 
+                               placeholder="En az 6 karakter" minlength="6">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="confirm-password">🔒 Şifre Tekrar *</label>
+                        <input type="password" id="confirm-password" name="confirmPassword" required 
+                               placeholder="Şifrenizi tekrar girin">
+                    </div>
+                    
+                    <div class="trial-info">
+                        <div class="trial-badge">
+                            <span class="trial-icon">⏰</span>
+                            <div>
+                                <strong>7 Günlük Deneme Süresi</strong>
+                                <p>Kayıt olduktan sonra 7 gün boyunca tüm özellikleri ücretsiz kullanabilirsiniz</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="register-btn">
+                            <span class="btn-icon">🚀</span>
+                            Kayıt Ol ve Başla
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Giriş Modal -->
+    <div id="login-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2>🔐 Giriş Yap</h2>
+                <p>Hesabınıza giriş yapın</p>
+            </div>
+            <div class="modal-body">
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="login-email">👤 Kullanıcı Adı</label>
+                        <input type="text" id="login-email" name="email" required 
+                               placeholder="Kullanıcı adınızı girin">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="login-password">🔒 Şifre</label>
+                        <input type="password" id="login-password" name="password" required 
+                               placeholder="Şifrenizi girin">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="remember-me" name="rememberMe">
+                            <span class="checkmark"></span>
+                            Beni hatırla (30 gün)
+                        </label>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="login-btn">
+                            <span class="btn-icon">🔑</span>
+                            Giriş Yap
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="excel-import-export.js"></script>
     <script src="product-module.js"></script>
     <script src="alert-system.js"></script>
@@ -901,7 +975,7 @@
             console.log('🚀 Uygulama başlatılıyor...');
             
             // Kullanıcı session'ını başlat
-            const isLoggedIn = await initializeUserSession();
+            const isLoggedIn = await window.initializeUserSession();
             
             if (isLoggedIn) {
                 console.log('✅ Kullanıcı giriş yapmış, uygulama yükleniyor...');

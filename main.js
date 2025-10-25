@@ -175,6 +175,8 @@ async function initDatabase() {
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 full_name TEXT NOT NULL,
+                phone TEXT, -- Telefon numarası
+                company_name TEXT, -- Şirket adı
                 role TEXT DEFAULT 'user', -- 'admin', 'user'
                 is_active INTEGER DEFAULT 1,
                 last_login DATETIME,
@@ -208,7 +210,7 @@ async function initDatabase() {
             
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
+                name TEXT NOT NULL UNIQUE,
                 icon TEXT DEFAULT '📦',
                 color TEXT DEFAULT '#667eea',
                 description TEXT,
@@ -220,7 +222,7 @@ async function initDatabase() {
             
             CREATE TABLE IF NOT EXISTS brands (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
+                name TEXT NOT NULL UNIQUE,
                 logo TEXT DEFAULT '🏷️',
                 description TEXT,
                 website TEXT,
@@ -260,6 +262,35 @@ async function initDatabase() {
                 resolved_by TEXT,
                 notes TEXT,
                 FOREIGN KEY (alert_id) REFERENCES alerts (id)
+            );
+            
+            -- Lisanslama Bilgileri Tablosu
+            CREATE TABLE IF NOT EXISTS license_info (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                license_type TEXT DEFAULT 'trial', -- 'trial', 'paid', 'enterprise'
+                trial_start_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                trial_end_date DATETIME,
+                license_key TEXT,
+                is_active INTEGER DEFAULT 1,
+                max_users INTEGER DEFAULT 1,
+                features TEXT, -- JSON formatında özellik listesi
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            );
+            
+            -- Lisanslama Sunucu İletişim Logları
+            CREATE TABLE IF NOT EXISTS license_server_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                action TEXT NOT NULL, -- 'register', 'validate', 'renew', 'error'
+                request_data TEXT, -- JSON formatında gönderilen veri
+                response_data TEXT, -- JSON formatında alınan yanıt
+                status TEXT DEFAULT 'pending', -- 'pending', 'success', 'failed'
+                error_message TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
             );
         `);
         
@@ -395,6 +426,17 @@ function registerGlobalShortcuts() {
             if (mainWindow) {
                 mainWindow.webContents.send('shortcut-pressed', 'quick-payment');
                 mainWindow.focus();
+            }
+        });
+
+        // Console açma kısayolu - F12
+        globalShortcut.register('F12', () => {
+            if (mainWindow) {
+                if (mainWindow.webContents.isDevToolsOpened()) {
+                    mainWindow.webContents.closeDevTools();
+                } else {
+                    mainWindow.webContents.openDevTools();
+                }
             }
         });
         
@@ -741,6 +783,9 @@ function setupIpcHandlers() {
             if (!db) {
                 throw new Error('Veritabanı başlatılmadı');
             }
+            
+            // Duplicate kontrolü kaldırıldı - aynı isimde kategori eklenebilir
+            
             console.log('Adding category:', category);
             const stmt = db.prepare('INSERT INTO categories (name, icon, color, description) VALUES (?, ?, ?, ?)');
             const result = stmt.run(
@@ -762,6 +807,9 @@ function setupIpcHandlers() {
             if (!db) {
                 throw new Error('Veritabanı başlatılmadı');
             }
+            
+            // Duplicate kontrolü kaldırıldı - aynı isimde marka eklenebilir
+            
             console.log('Adding brand:', brand);
             const stmt = db.prepare('INSERT INTO brands (name, logo, description, website) VALUES (?, ?, ?, ?)');
             const result = stmt.run(
@@ -1616,6 +1664,153 @@ function setupIpcHandlers() {
     });
 
     // ==================== Kullanıcı Yönetimi IPC ====================
+    
+    // İlk açılış kontrolü - kayıtlı kullanıcı var mı?
+    ipcMain.handle('check-first-time-setup', async () => {
+        try {
+            const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
+            return { 
+                success: true, 
+                isFirstTime: userCount.count === 0,
+                userCount: userCount.count 
+            };
+        } catch (error) {
+            console.error('First time setup check error:', error);
+            return { success: false, error: error.message, isFirstTime: true };
+        }
+    });
+    
+    // İlk kullanıcı kaydı (admin olarak)
+    ipcMain.handle('register-first-user', async (event, userData) => {
+        try {
+            const bcrypt = require('bcrypt');
+            const { email, phone, companyName, fullName, password } = userData;
+            
+            // Email kontrolü
+            const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+            if (existingUser) {
+                return { success: false, error: 'Bu email adresi zaten kullanılıyor' };
+            }
+            
+            // Şifre hashleme
+            const saltRounds = 10;
+            const passwordHash = await bcrypt.hash(password, saltRounds);
+            
+            // Username oluştur (email'den)
+            const username = email.split('@')[0];
+            
+            // Kullanıcı oluştur (admin olarak)
+            const stmt = db.prepare(`
+                INSERT INTO users (username, email, password_hash, full_name, phone, company_name, role)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `);
+            
+            const result = stmt.run(username, email, passwordHash, fullName, phone, companyName, 'admin');
+            const userId = result.lastInsertRowid;
+            
+            // Lisanslama bilgilerini oluştur
+            const trialEndDate = new Date();
+            trialEndDate.setDate(trialEndDate.getDate() + 7); // 7 gün sonra
+            
+            const licenseStmt = db.prepare(`
+                INSERT INTO license_info (user_id, license_type, trial_start_date, trial_end_date, max_users, features)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `);
+            
+            const features = JSON.stringify({
+                'customer_management': true,
+                'product_management': true,
+                'transaction_tracking': true,
+                'reporting': true,
+                'alerts': true,
+                'backup_restore': true
+            });
+            
+            licenseStmt.run(userId, 'trial', new Date().toISOString(), trialEndDate.toISOString(), 1, features);
+            
+            // Lisanslama sunucusuna kayıt gönder
+            await sendToLicenseServer('register', {
+                userId: userId,
+                email: email,
+                phone: phone,
+                companyName: companyName,
+                fullName: fullName,
+                trialStartDate: new Date().toISOString(),
+                trialEndDate: trialEndDate.toISOString()
+            });
+            
+            console.log(`✅ İlk kullanıcı kaydedildi: ${email} (ID: ${userId})`);
+            return { 
+                success: true, 
+                message: 'Kayıt başarılı! 7 günlük deneme süreniz başladı.',
+                userId: userId,
+                trialEndDate: trialEndDate.toISOString()
+            };
+            
+        } catch (error) {
+            console.error('İlk kullanıcı kayıt hatası:', error);
+            return { success: false, error: error.message };
+        }
+    });
+    
+    // Lisanslama sunucusuna veri gönderme fonksiyonu
+    async function sendToLicenseServer(action, data) {
+        try {
+            const https = require('https');
+            const LICENSE_SERVER_URL = 'https://license.eticajans.com/api'; // Gerçek sunucu URL'i
+            
+            const requestData = {
+                action: action,
+                timestamp: new Date().toISOString(),
+                data: data
+            };
+            
+            // Log'a kaydet
+            const logStmt = db.prepare(`
+                INSERT INTO license_server_log (user_id, action, request_data, status)
+                VALUES (?, ?, ?, ?)
+            `);
+            
+            logStmt.run(data.userId || 1, action, JSON.stringify(requestData), 'pending');
+            
+            // Gerçek sunucuya gönder (şimdilik mock)
+            console.log('📤 Lisanslama sunucusuna gönderiliyor:', requestData);
+            
+            // Mock response - gerçek implementasyonda HTTPS request yapılacak
+            const mockResponse = {
+                success: true,
+                message: 'Kayıt başarılı',
+                licenseKey: `LIC-${Date.now()}`,
+                trialDays: 7
+            };
+            
+            // Log'u güncelle
+            const updateLogStmt = db.prepare(`
+                UPDATE license_server_log 
+                SET response_data = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ? AND action = ? AND status = 'pending'
+            `);
+            
+            updateLogStmt.run(JSON.stringify(mockResponse), 'success', data.userId || 1, action);
+            
+            return mockResponse;
+            
+        } catch (error) {
+            console.error('Lisanslama sunucusu hatası:', error);
+            
+            // Hata log'unu kaydet
+            const errorLogStmt = db.prepare(`
+                UPDATE license_server_log 
+                SET status = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ? AND action = ? AND status = 'pending'
+            `);
+            
+            errorLogStmt.run('failed', error.message, data.userId || 1, action);
+            
+            return { success: false, error: error.message };
+        }
+    }
+    
     ipcMain.handle('get-users', async () => {
         try {
             const rows = db.prepare(`SELECT id, username, email, full_name, role, is_active, last_login, created_at FROM users ORDER BY created_at DESC`).all();
@@ -1924,6 +2119,9 @@ function createMainWindow() {
 
     mainWindow.loadFile('index.html');
 
+    // Developer Tools'u aç
+    mainWindow.webContents.openDevTools();
+
     // Content Security Policy
     mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
         callback({
@@ -1941,6 +2139,24 @@ function createMainWindow() {
                 ]
             }
         });
+    });
+
+    // Renderer sürecindeki hataları yakala
+    mainWindow.webContents.on('crashed', (event, killed) => {
+        console.error('❌ Renderer process crashed:', killed);
+    });
+
+    mainWindow.webContents.on('unresponsive', () => {
+        console.error('❌ Renderer process became unresponsive');
+    });
+
+    mainWindow.webContents.on('responsive', () => {
+        console.log('✅ Renderer process became responsive again');
+    });
+
+    // Console mesajlarını yakala
+    mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+        console.log(`[Renderer ${level}] ${message} (${sourceId}:${line})`);
     });
 
     mainWindow.once('ready-to-show', () => {

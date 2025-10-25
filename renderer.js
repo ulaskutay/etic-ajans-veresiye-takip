@@ -8,6 +8,7 @@ if (typeof window.ipcRenderer === 'undefined') {
 if (typeof window.electronAPI === 'undefined') {
     window.electronAPI = {
     getCustomers: () => window.ipcRenderer.invoke('get-customers'),
+    getCustomer: (id) => window.ipcRenderer.invoke('get-customer', id),
     addCustomer: (customer) => window.ipcRenderer.invoke('add-customer', customer),
     updateCustomer: (id, customer) => window.ipcRenderer.invoke('update-customer', id, customer),
     deleteCustomer: (id) => window.ipcRenderer.invoke('delete-customer', id),
@@ -15,7 +16,8 @@ if (typeof window.electronAPI === 'undefined') {
     addProduct: (product) => window.ipcRenderer.invoke('add-product', product),
     updateProduct: (id, product) => window.ipcRenderer.invoke('update-product', id, product),
     deleteProduct: (id) => window.ipcRenderer.invoke('delete-product', id),
-    getTransactions: () => window.ipcRenderer.invoke('get-transactions'),
+    getTransactions: (customerId) => window.ipcRenderer.invoke('get-transactions', customerId),
+    getAllTransactions: () => window.ipcRenderer.invoke('get-all-transactions'),
     addTransaction: (transaction) => window.ipcRenderer.invoke('add-transaction', transaction),
     getAlerts: () => window.ipcRenderer.invoke('get-alerts'),
     addAlert: (alert) => window.ipcRenderer.invoke('add-alert', alert),
@@ -44,7 +46,10 @@ if (typeof window.electronAPI === 'undefined') {
         loginUser: (credentials) => window.ipcRenderer.invoke('login-user', credentials),
         validateSession: (sessionToken) => window.ipcRenderer.invoke('validate-session', sessionToken),
         logoutUser: (sessionToken) => window.ipcRenderer.invoke('logout-user', sessionToken),
-        getCurrentUser: (sessionToken) => window.ipcRenderer.invoke('get-current-user', sessionToken)
+        getCurrentUser: (sessionToken) => window.ipcRenderer.invoke('get-current-user', sessionToken),
+        // İlk kurulum APIs
+        checkFirstTimeSetup: () => window.ipcRenderer.invoke('check-first-time-setup'),
+        registerFirstUser: (userData) => window.ipcRenderer.invoke('register-first-user', userData)
     };
 }
 
@@ -88,9 +93,7 @@ let customers = window.customers;
 let currentCustomer = window.currentCustomer;
 let sales = window.sales;
 let purchases = window.purchases;
-let products = window.products;
-let categories = window.categories;
-let brands = window.brands;
+// products, categories, brands artık product-module.js'de tanımlı
 let selectedCustomerId = window.selectedCustomerId;
 
 // Kullanıcı rolüne göre UI elementlerini güncelle
@@ -146,28 +149,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (currentCustomer) {
                     addSale();
                 } else {
-                    showNotification('Önce müşteri seçin (F1)', 'warning');
+                    showMessage('Önce müşteri seçin (F1)', 'warning');
                 }
                 break;
             case 'add-payment':
                 if (currentCustomer) {
                     addPurchase();
                 } else {
-                    showNotification('Önce müşteri seçin (F1)', 'warning');
+                    showMessage('Önce müşteri seçin (F1)', 'warning');
                 }
             break;
         case 'quick-debt':
                 if (currentCustomer) {
                     quickSale();
                 } else {
-                    showNotification('Önce müşteri seçin (F1)', 'warning');
+                    showMessage('Önce müşteri seçin (F1)', 'warning');
                 }
             break;
             case 'quick-payment':
                 if (currentCustomer) {
                     quickPurchase();
                 } else {
-                    showNotification('Önce müşteri seçin (F1)', 'warning');
+                    showMessage('Önce müşteri seçin (F1)', 'warning');
                 }
             break;
     }
@@ -440,16 +443,32 @@ function formatDateForInput(date) {
 // Load customers
 async function loadCustomers(clearSelection = false) {
     try {
-        customers = await window.ipcRenderer.invoke('get-customers');
+        console.log('🔄 IPC ile müşteri verileri alınıyor...');
+        customers = await window.electronAPI.getCustomers();
+        console.log('✅ Müşteri verileri alındı:', customers.length, 'adet');
         
         // DOM elementleri hazır olduğunda göster
-        if (document.getElementById('customer-table-body')) {
+        const customerTableBody = document.getElementById('customer-table-body');
+        console.log('🔍 customer-table-body elementi:', customerTableBody ? 'bulundu' : 'bulunamadı');
+        
+        if (customerTableBody) {
+            console.log('🔄 Müşteriler tabloya yazılıyor...');
             displayCustomers();
+            console.log('✅ Müşteriler tabloya yazıldı');
+        } else {
+            console.warn('⚠️ customer-table-body elementi bulunamadı');
         }
         
         // Hesap özeti alanları mevcutsa güncelle
-        if (document.getElementById('total-sales')) {
+        const totalSalesElement = document.getElementById('total-sales');
+        console.log('🔍 total-sales elementi:', totalSalesElement ? 'bulundu' : 'bulunamadı');
+        
+        if (totalSalesElement) {
+            console.log('🔄 Hesap özeti güncelleniyor...');
             updateAccountSummary();
+            console.log('✅ Hesap özeti güncellendi');
+        } else {
+            console.warn('⚠️ total-sales elementi bulunamadı');
         }
         
         // Only clear selection if explicitly requested
@@ -457,9 +476,13 @@ async function loadCustomers(clearSelection = false) {
             currentCustomer = null;
             clearCustomerDetails();
         }
+        
+        console.log('✅ loadCustomers fonksiyonu başarıyla tamamlandı');
     } catch (error) {
-        console.error('Müşteriler yüklenirken hata:', error);
-        showNotification('Müşteriler yüklenirken hata oluştu', 'error');
+        console.error('❌ Müşteriler yüklenirken hata:', error);
+        console.error('❌ Hata detayları:', error.message);
+        console.error('❌ Hata stack:', error.stack);
+        showMessage('Müşteriler yüklenirken hata oluştu: ' + error.message, 'error');
     }
 }
 
@@ -496,7 +519,7 @@ async function selectCustomer(customerId) {
         document.querySelector(`tr[data-customer-id="${customerId}"]`).classList.add('selected');
         
         // Load customer details
-        currentCustomer = await window.ipcRenderer.invoke('get-customer', customerId);
+        currentCustomer = await window.electronAPI.getCustomer(customerId);
         displayCustomerDetails();
         
         // Load transactions
@@ -504,7 +527,7 @@ async function selectCustomer(customerId) {
         
     } catch (error) {
         console.error('Müşteri seçilirken hata:', error);
-        showNotification('Müşteri seçilirken hata oluştu', 'error');
+        showMessage('Müşteri seçilirken hata oluştu', 'error');
     }
 }
 
@@ -570,7 +593,7 @@ async function loadTransactions(customerId, preserveSelection = false) {
     try {
         console.log('Loading transactions for customer:', customerId, 'preserveSelection:', preserveSelection);
         
-        const transactions = await window.ipcRenderer.invoke('get-transactions', customerId);
+        const transactions = await window.electronAPI.getTransactions(customerId);
         console.log('Loaded transactions:', transactions.length);
         
         // Separate sales and purchases
@@ -607,7 +630,7 @@ async function loadTransactions(customerId, preserveSelection = false) {
         
     } catch (error) {
         console.error('İşlemler yüklenirken hata:', error);
-        showNotification('İşlemler yüklenirken hata oluştu', 'error');
+        showMessage('İşlemler yüklenirken hata oluştu', 'error');
     }
 }
 
@@ -916,7 +939,7 @@ async function editSale() {
     console.log('sales array:', sales);
     
     if (!currentCustomer) {
-        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        showMessage('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     
@@ -926,7 +949,7 @@ async function editSale() {
     
     if (!selectedSale) {
         console.log('No selected sale found, showing warning');
-        showNotification('Lütfen düzenlemek istediğiniz satış işlemini seçin', 'warning');
+        showMessage('Lütfen düzenlemek istediğiniz satış işlemini seçin', 'warning');
         return;
     }
     
@@ -980,7 +1003,7 @@ async function editSale() {
         
     } catch (error) {
         console.error('Error populating modal:', error);
-        showNotification('Modal açılırken hata oluştu: ' + error.message, 'error');
+        showMessage('Modal açılırken hata oluştu: ' + error.message, 'error');
     }
 }
 
@@ -989,14 +1012,14 @@ async function deleteSale() {
     console.log('=== DELETE SALE FUNCTION CALLED ===');
     
     if (!currentCustomer) {
-        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        showMessage('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     
     // Seçili satırı kontrol et
     const selectedRow = document.querySelector('#sales-table-body tr.selected');
     if (!selectedRow) {
-        showNotification('Lütfen silmek istediğiniz satış işlemini seçin', 'warning');
+        showMessage('Lütfen silmek istediğiniz satış işlemini seçin', 'warning');
         return;
     }
     
@@ -1005,7 +1028,7 @@ async function deleteSale() {
     
     // Sadece satış işlemlerini işle
     if (transactionType !== 'sale') {
-        showNotification('Bu bir satış işlemi değil', 'warning');
+        showMessage('Bu bir satış işlemi değil', 'warning');
         return;
     }
     
@@ -1017,7 +1040,7 @@ async function deleteSale() {
     }
     
     if (!selectedSale) {
-        showNotification('Satış işlemi bulunamadı', 'error');
+        showMessage('Satış işlemi bulunamadı', 'error');
         return;
     }
     
@@ -1027,7 +1050,7 @@ async function deleteSale() {
             const result = await window.ipcRenderer.invoke('delete-transaction', selectedSale.id);
             
             if (result.success) {
-                showNotification('Satış işlemi başarıyla silindi', 'success');
+                showMessage('Satış işlemi başarıyla silindi', 'success');
                 
                 // Store current customer ID before reloading
                 const storedCustomerId = currentCustomer ? currentCustomer.id : null;
@@ -1040,11 +1063,11 @@ async function deleteSale() {
                     await selectCustomer(storedCustomerId);
                 }
             } else {
-                showNotification('Satış işlemi silinirken hata oluştu', 'error');
+                showMessage('Satış işlemi silinirken hata oluştu', 'error');
             }
         } catch (error) {
             console.error('Satış işlemi silinirken hata:', error);
-            showNotification('Satış işlemi silinirken hata oluştu', 'error');
+            showMessage('Satış işlemi silinirken hata oluştu', 'error');
         }
     }
 }
@@ -1057,7 +1080,7 @@ async function editPurchase() {
     console.log('purchases array:', purchases);
     
     if (!currentCustomer) {
-        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        showMessage('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     
@@ -1067,7 +1090,7 @@ async function editPurchase() {
     
     if (!selectedPurchase) {
         console.log('No selected purchase found, showing warning');
-        showNotification('Lütfen düzenlemek istediğiniz tahsilat işlemini seçin', 'warning');
+        showMessage('Lütfen düzenlemek istediğiniz tahsilat işlemini seçin', 'warning');
         return;
     }
     
@@ -1098,7 +1121,7 @@ async function editPurchase() {
         
     } catch (error) {
         console.error('Error populating purchase modal:', error);
-        showNotification('Modal açılırken hata oluştu: ' + error.message, 'error');
+        showMessage('Modal açılırken hata oluştu: ' + error.message, 'error');
     }
 }
 
@@ -1107,13 +1130,13 @@ function deletePurchase() {
     console.log('=== DELETE PURCHASE FUNCTION CALLED ===');
     
     if (!currentCustomer) {
-        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        showMessage('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     
     const selectedPurchase = getSelectedTransaction('purchase'); // Sadece purchase işlemlerini al
     if (!selectedPurchase) {
-        showNotification('Lütfen silmek istediğiniz tahsilat işlemini seçin', 'warning');
+        showMessage('Lütfen silmek istediğiniz tahsilat işlemini seçin', 'warning');
         return;
     }
     
@@ -1173,7 +1196,7 @@ async function deleteTransaction(transactionId) {
         const result = await window.ipcRenderer.invoke('delete-transaction', transactionId);
         
         if (result.success) {
-            showNotification('İşlem başarıyla silindi', 'success');
+            showMessage('İşlem başarıyla silindi', 'success');
             
             // Store current customer ID before reloading
             const storedCustomerId = currentCustomer ? currentCustomer.id : null;
@@ -1186,11 +1209,11 @@ async function deleteTransaction(transactionId) {
                 await selectCustomer(storedCustomerId);
             }
         } else {
-            showNotification('İşlem silinirken hata oluştu', 'error');
+            showMessage('İşlem silinirken hata oluştu', 'error');
         }
     } catch (error) {
         console.error('İşlem silinirken hata:', error);
-        showNotification('İşlem silinirken hata oluştu', 'error');
+        showMessage('İşlem silinirken hata oluştu', 'error');
     }
 }
 
@@ -1222,17 +1245,17 @@ async function handleEditSale(e) {
     
     // Validation
     if (!transactionId) {
-        showNotification('İşlem ID bulunamadı', 'error');
+        showMessage('İşlem ID bulunamadı', 'error');
         return;
     }
     
     if (!amount || amount <= 0) {
-        showNotification('Geçerli bir tutar girin', 'error');
+        showMessage('Geçerli bir tutar girin', 'error');
         return;
     }
     
     if (!currentCustomer) {
-        showNotification('Müşteri bilgisi bulunamadı', 'error');
+        showMessage('Müşteri bilgisi bulunamadı', 'error');
         return;
     }
     
@@ -1258,7 +1281,7 @@ async function handleEditSale(e) {
         console.log('Update result:', result);
         
         if (result.success) {
-            showNotification('Satış başarıyla güncellendi', 'success');
+            showMessage('Satış başarıyla güncellendi', 'success');
             
             // Modal'ı kapat
             closeModal('edit-sale-modal');
@@ -1280,11 +1303,11 @@ async function handleEditSale(e) {
             
         } else {
             console.error('Update failed:', result);
-            showNotification('Satış güncellenirken hata oluştu: ' + (result.error || 'Bilinmeyen hata'), 'error');
+            showMessage('Satış güncellenirken hata oluştu: ' + (result.error || 'Bilinmeyen hata'), 'error');
         }
     } catch (error) {
         console.error('Satış güncellenirken hata:', error);
-        showNotification('Satış güncellenirken hata oluştu: ' + error.message, 'error');
+        showMessage('Satış güncellenirken hata oluştu: ' + error.message, 'error');
     }
 }
 
@@ -1308,7 +1331,7 @@ async function handleEditPurchase(e) {
         const result = await window.ipcRenderer.invoke('update-transaction', transactionData);
         
         if (result.success) {
-            showNotification('Tahsilat başarıyla güncellendi', 'success');
+            showMessage('Tahsilat başarıyla güncellendi', 'success');
             closeModal('edit-purchase-modal');
             
             // Store current customer ID before reloading
@@ -1322,11 +1345,11 @@ async function handleEditPurchase(e) {
                 await selectCustomer(storedCustomerId);
             }
         } else {
-            showNotification('Tahsilat güncellenirken hata oluştu', 'error');
+            showMessage('Tahsilat güncellenirken hata oluştu', 'error');
         }
     } catch (error) {
         console.error('Tahsilat güncellenirken hata:', error);
-        showNotification('Tahsilat güncellenirken hata oluştu', 'error');
+        showMessage('Tahsilat güncellenirken hata oluştu', 'error');
     }
 }
 
@@ -1425,7 +1448,7 @@ function handleCustomerSearchKeydown(event) {
         const searchTerm = document.getElementById('customer-search').value.trim();
         
         if (searchTerm.length === 0) {
-            showNotification('Arama terimi girin', 'warning');
+            showMessage('Arama terimi girin', 'warning');
             return;
         }
         
@@ -1438,7 +1461,7 @@ function handleCustomerSearchKeydown(event) {
         if (exactMatch) {
             selectCustomer(exactMatch.id);
             document.getElementById('customer-search').value = '';
-            showNotification(`${exactMatch.name} seçildi`, 'success');
+            showMessage(`${exactMatch.name} seçildi`, 'success');
             return;
         }
         
@@ -1451,9 +1474,9 @@ function handleCustomerSearchKeydown(event) {
         if (partialMatch) {
             selectCustomer(partialMatch.id);
             document.getElementById('customer-search').value = '';
-            showNotification(`${partialMatch.name} seçildi`, 'success');
+            showMessage(`${partialMatch.name} seçildi`, 'success');
         } else {
-            showNotification('Müşteri bulunamadı', 'warning');
+            showMessage('Müşteri bulunamadı', 'warning');
         }
     }
 }
@@ -1739,7 +1762,7 @@ async function handleAddCustomer(e) {
     const isEArchiveEnabled = document.getElementById('customer-e-archive-enabled').checked ? 1 : 0;
     
     if (!name) {
-        showNotification('Müşteri adı gereklidir', 'error');
+        showMessage('Müşteri adı gereklidir', 'error');
         return;
     }
     
@@ -1771,7 +1794,7 @@ async function handleAddCustomer(e) {
             is_e_archive_enabled: isEArchiveEnabled
         });
         
-        showNotification('Müşteri başarıyla eklendi', 'success');
+        showMessage('Müşteri başarıyla eklendi', 'success');
         closeModal('add-customer-modal');
         document.getElementById('add-customer-form').reset();
         
@@ -1780,7 +1803,7 @@ async function handleAddCustomer(e) {
         
     } catch (error) {
         console.error('Müşteri eklenirken hata:', error);
-        showNotification('Müşteri eklenirken hata oluştu', 'error');
+        showMessage('Müşteri eklenirken hata oluştu', 'error');
     }
 }
 
@@ -1825,7 +1848,7 @@ async function handleAddSale(e) {
     console.log('💰 handleAddSale BAŞLADI');
     
     if (!selectedCustomerId) {
-        showNotification('Müşteri seçimi bulunamadı', 'error');
+        showMessage('Müşteri seçimi bulunamadı', 'error');
         return;
     }
     
@@ -1835,7 +1858,7 @@ async function handleAddSale(e) {
     const productId = document.getElementById('sale-product').value || null;
     
     if (!date || !amount || amount <= 0) {
-        showNotification('Tarih ve tutar alanları zorunludur', 'error');
+        showMessage('Tarih ve tutar alanları zorunludur', 'error');
         return;
     }
     
@@ -1853,7 +1876,7 @@ async function handleAddSale(e) {
             date: new Date(date).toISOString()
         });
         
-        showNotification('Satış başarıyla eklendi', 'success');
+        showMessage('Satış başarıyla eklendi', 'success');
         closeModal('add-sale-modal');
         
         // Reset form but keep customer selection
@@ -1872,7 +1895,7 @@ async function handleAddSale(e) {
         
     } catch (error) {
         console.error('Satış eklenirken hata:', error);
-        showNotification('Satış eklenirken hata oluştu', 'error');
+        showMessage('Satış eklenirken hata oluştu', 'error');
     }
 }
 
@@ -1883,7 +1906,7 @@ async function handleAddPurchase(e) {
     console.log('💵 handleAddPurchase BAŞLADI');
     
     if (!selectedCustomerId) {
-        showNotification('Müşteri seçimi bulunamadı', 'error');
+        showMessage('Müşteri seçimi bulunamadı', 'error');
         return;
     }
     
@@ -1894,7 +1917,7 @@ async function handleAddPurchase(e) {
     console.log('Tahsilat verileri:', { date, description, amount, selectedCustomerId });
     
     if (!date || !amount || amount <= 0) {
-        showNotification('Tarih ve tutar alanları zorunludur', 'error');
+        showMessage('Tarih ve tutar alanları zorunludur', 'error');
         return;
     }
     
@@ -1915,7 +1938,7 @@ async function handleAddPurchase(e) {
         
         console.log('✅ Tahsilat kaydedildi!');
         
-        showNotification('Tahsilat başarıyla eklendi', 'success');
+        showMessage('Tahsilat başarıyla eklendi', 'success');
         closeModal('add-purchase-modal');
         
         // Reset form but keep customer selection
@@ -1934,14 +1957,14 @@ async function handleAddPurchase(e) {
         
     } catch (error) {
         console.error('Tahsilat eklenirken hata:', error);
-        showNotification('Tahsilat eklenirken hata oluştu', 'error');
+        showMessage('Tahsilat eklenirken hata oluştu', 'error');
     }
 }
 
 // Button functions
 async function addSale() {
     if (!currentCustomer) {
-        showNotification('Önce bir müşteri seçin', 'error');
+        showMessage('Önce bir müşteri seçin', 'error');
         return;
     }
     
@@ -1976,7 +1999,7 @@ async function addTransaction() {
     console.log('=== ADD TRANSACTION FUNCTION CALLED ===');
     
     if (!currentCustomer) {
-        showNotification('Önce bir müşteri seçin', 'error');
+        showMessage('Önce bir müşteri seçin', 'error');
         return;
     }
     
@@ -1990,7 +2013,7 @@ async function editTransaction() {
     console.log('=== EDIT TRANSACTION FUNCTION CALLED ===');
     
     if (!currentCustomer) {
-        showNotification('Önce bir müşteri seçin', 'error');
+        showMessage('Önce bir müşteri seçin', 'error');
         return;
     }
     
@@ -1999,7 +2022,7 @@ async function editTransaction() {
     console.log('selectedRow:', selectedRow);
     
     if (!selectedRow) {
-        showNotification('Düzenlemek için bir işlem seçin', 'warning');
+        showMessage('Düzenlemek için bir işlem seçin', 'warning');
         return;
     }
     
@@ -2020,7 +2043,7 @@ async function deleteTransaction() {
     console.log('=== DELETE TRANSACTION FUNCTION CALLED ===');
     
     if (!currentCustomer) {
-        showNotification('Önce bir müşteri seçin', 'error');
+        showMessage('Önce bir müşteri seçin', 'error');
         return;
     }
     
@@ -2029,7 +2052,7 @@ async function deleteTransaction() {
     console.log('selectedRow:', selectedRow);
     
     if (!selectedRow) {
-        showNotification('Silmek için bir işlem seçin', 'warning');
+        showMessage('Silmek için bir işlem seçin', 'warning');
         return;
     }
     
@@ -2040,7 +2063,7 @@ async function deleteTransaction() {
     console.log('transactionId:', transactionId);
     
     if (!transactionType || !transactionId) {
-        showNotification('İşlem bilgileri bulunamadı', 'error');
+        showMessage('İşlem bilgileri bulunamadı', 'error');
         return;
     }
     
@@ -2049,7 +2072,7 @@ async function deleteTransaction() {
     } else if (transactionType === 'purchase') {
         await deletePurchase();
     } else {
-        showNotification('Bilinmeyen işlem türü', 'error');
+        showMessage('Bilinmeyen işlem türü', 'error');
     }
 }
 
@@ -2091,7 +2114,7 @@ async function loadProductsForSale() {
 
 async function addPurchase() {
     if (!currentCustomer) {
-        showNotification('Önce bir müşteri seçin', 'error');
+        showMessage('Önce bir müşteri seçin', 'error');
         return;
     }
     
@@ -2120,7 +2143,7 @@ async function addPurchase() {
 
 function editCustomer() {
     if (!currentCustomer) {
-        showNotification('Önce bir müşteri seçin', 'error');
+        showMessage('Önce bir müşteri seçin', 'error');
         return;
     }
     
@@ -2211,7 +2234,7 @@ async function handleEditCustomer(e) {
     const isEArchiveEnabled = document.getElementById('edit-customer-e-archive-enabled').checked ? 1 : 0;
     
     if (!name) {
-        showNotification('Müşteri adı gereklidir', 'error');
+        showMessage('Müşteri adı gereklidir', 'error');
         return;
     }
     
@@ -2249,7 +2272,7 @@ async function handleEditCustomer(e) {
         console.log('Update result:', result);
         
         if (result.success) {
-            showNotification('Müşteri başarıyla güncellendi', 'success');
+            showMessage('Müşteri başarıyla güncellendi', 'success');
             closeModal('edit-customer-modal');
             
             // Reload customers and refresh current customer
@@ -2257,24 +2280,24 @@ async function handleEditCustomer(e) {
             await selectCustomer(id);
             
         } else {
-            showNotification('Müşteri güncellenirken hata oluştu', 'error');
+            showMessage('Müşteri güncellenirken hata oluştu', 'error');
         }
         
     } catch (error) {
         console.error('Müşteri güncellenirken hata:', error);
-        showNotification('Müşteri güncellenirken hata oluştu', 'error');
+        showMessage('Müşteri güncellenirken hata oluştu', 'error');
     }
 }
 
 async function deleteCustomer() {
     // Admin kontrolü
     if (!window.currentUser || window.currentUser.role !== 'admin') {
-        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        showMessage('Bu işlem için admin yetkisi gereklidir', 'error');
         return;
     }
     
     if (!currentCustomer) {
-        showNotification('Önce bir müşteri seçin', 'error');
+        showMessage('Önce bir müşteri seçin', 'error');
         return;
     }
     
@@ -2289,7 +2312,7 @@ async function deleteCustomer() {
         const result = await window.ipcRenderer.invoke('delete-customer', currentCustomer.id);
         
         if (result.success) {
-            showNotification('Müşteri başarıyla silindi', 'success');
+            showMessage('Müşteri başarıyla silindi', 'success');
             
             // Müşteri listesini yenile
             await loadCustomers();
@@ -2330,12 +2353,12 @@ async function deleteCustomer() {
             }
             
         } else {
-            showNotification('Müşteri silinirken hata oluştu', 'error');
+            showMessage('Müşteri silinirken hata oluştu', 'error');
         }
         
     } catch (error) {
         console.error('Müşteri silinirken hata:', error);
-        showNotification('Müşteri silinirken hata oluştu', 'error');
+        showMessage('Müşteri silinirken hata oluştu', 'error');
     }
 }
 
@@ -2464,7 +2487,7 @@ function formatDateForDisplay(dateString) {
     return date.toLocaleDateString('tr-TR');
 }
 
-function showNotification(message, type = 'info') {
+function showMessage(message, type = 'info') {
     const notification = document.createElement('div');
     notification.style.cssText = `
         position: fixed;
@@ -2575,28 +2598,28 @@ function handleKeyboardShortcuts(e) {
             if (currentCustomer) {
                 quickSale();
             } else {
-                showNotification('Önce müşteri seçin (F1)', 'warning');
+                showMessage('Önce müşteri seçin (F1)', 'warning');
             }
             break;
         case 'F3':
             if (currentCustomer) {
                 quickPurchase();
             } else {
-                showNotification('Önce müşteri seçin (F1)', 'warning');
+                showMessage('Önce müşteri seçin (F1)', 'warning');
             }
             break;
         case 'F4':
             if (currentCustomer) {
                 addSale();
             } else {
-                showNotification('Önce müşteri seçin (F1)', 'warning');
+                showMessage('Önce müşteri seçin (F1)', 'warning');
             }
             break;
         case 'F5':
             if (currentCustomer) {
                 addPurchase();
             } else {
-                showNotification('Önce müşteri seçin (F1)', 'warning');
+                showMessage('Önce müşteri seçin (F1)', 'warning');
             }
             break;
         case 'F8':
@@ -2636,7 +2659,7 @@ function showCustomerSearchModal() {
 
 async function quickSale() {
     if (!currentCustomer) {
-        showNotification('Önce müşteri seçin (F1)', 'warning');
+        showMessage('Önce müşteri seçin (F1)', 'warning');
         return;
     }
     
@@ -2649,7 +2672,7 @@ async function quickSale() {
     
     const amountFloat = parseFloat(amount);
     if (isNaN(amountFloat) || amountFloat <= 0) {
-        showNotification('Geçerli bir tutar girin', 'error');
+        showMessage('Geçerli bir tutar girin', 'error');
         return;
     }
     
@@ -2670,7 +2693,7 @@ async function quickSale() {
             total_amount: amountFloat
         });
         
-        showNotification(`✅ ${formatMoney(amountFloat)} satış kaydedildi`, 'success');
+        showMessage(`✅ ${formatMoney(amountFloat)} satış kaydedildi`, 'success');
         
         // Reload data
         await loadCustomers();
@@ -2678,13 +2701,13 @@ async function quickSale() {
         
     } catch (error) {
         console.error('Quick sale error:', error);
-        showNotification('Satış kaydedilemedi', 'error');
+        showMessage('Satış kaydedilemedi', 'error');
     }
 }
 
 async function quickPurchase() {
     if (!currentCustomer) {
-        showNotification('Önce müşteri seçin (F1)', 'warning');
+        showMessage('Önce müşteri seçin (F1)', 'warning');
         return;
     }
     
@@ -2697,7 +2720,7 @@ async function quickPurchase() {
     
     const amountFloat = parseFloat(amount);
     if (isNaN(amountFloat) || amountFloat <= 0) {
-        showNotification('Geçerli bir tutar girin', 'error');
+        showMessage('Geçerli bir tutar girin', 'error');
         return;
     }
     
@@ -2718,7 +2741,7 @@ async function quickPurchase() {
             total_amount: amountFloat
         });
         
-        showNotification(`✅ ${formatMoney(amountFloat)} tahsilat kaydedildi`, 'success');
+        showMessage(`✅ ${formatMoney(amountFloat)} tahsilat kaydedildi`, 'success');
         
         // Reload data
         await loadCustomers();
@@ -2726,7 +2749,7 @@ async function quickPurchase() {
         
     } catch (error) {
         console.error('Quick purchase error:', error);
-        showNotification('Tahsilat kaydedilemedi', 'error');
+        showMessage('Tahsilat kaydedilemedi', 'error');
     }
 }
 
@@ -2740,12 +2763,6 @@ function showAbout() {
     alert('Etic Ajans - Veresiye Takip\nSürüm: 1.0.1.1\n\nGeliştirici: Etic Ajans\n\nBu uygulama müşteri borç-alacak takibi için geliştirilmiştir.');
 }
 
-function exitApp() {
-    if (confirm('Çıkış yapmak istediğinizden emin misiniz?\n\nBu işlem kullanıcı oturumunuzu sonlandıracaktır.')) {
-        // Sadece kullanıcı çıkışı yap
-        handleLogout();
-    }
-}
 
 // Top Control Functions
 function queryTransactions() {
@@ -2753,13 +2770,13 @@ function queryTransactions() {
     const endDate = document.getElementById('end-date').value;
     
     if (!startDate || !endDate) {
-        showNotification('Başlangıç ve bitiş tarihlerini seçin', 'error');
+        showMessage('Başlangıç ve bitiş tarihlerini seçin', 'error');
         return;
     }
     
     // Tarih aralığındaki işlemleri filtrele
     filterTransactions();
-    showNotification(`${formatDate(startDate)} - ${formatDate(endDate)} tarihleri arası işlemler gösteriliyor`, 'success');
+    showMessage(`${formatDate(startDate)} - ${formatDate(endDate)} tarihleri arası işlemler gösteriliyor`, 'success');
 }
 
 function showReports() {
@@ -2771,13 +2788,13 @@ async function showBalanceTotal() {
     try {
         // Seçili müşteri kontrolü
         if (!currentCustomer) {
-            showNotification('Lütfen önce bir müşteri seçin', 'warning');
+            showMessage('Lütfen önce bir müşteri seçin', 'warning');
             return;
         }
         
         // Ana ekrandaki aynı veri kaynağını kullan (sales ve purchases global değişkenleri)
         if (!sales || !purchases) {
-            showNotification('İşlem verileri yüklenmedi. Lütfen müşteriyi tekrar seçin.', 'warning');
+            showMessage('İşlem verileri yüklenmedi. Lütfen müşteriyi tekrar seçin.', 'warning');
             return;
         }
         
@@ -2823,7 +2840,7 @@ async function showBalanceTotal() {
         
     } catch (error) {
         console.error('Bakiye hesaplanırken hata:', error);
-        showNotification('Bakiye hesaplanırken hata oluştu', 'error');
+        showMessage('Bakiye hesaplanırken hata oluştu', 'error');
     }
 }
 
@@ -3054,7 +3071,7 @@ function closeBalanceModal() {
 function printBalanceReport() {
     // Seçili müşteri kontrolü
     if (!currentCustomer) {
-        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        showMessage('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     
@@ -3066,7 +3083,7 @@ function printBalanceReport() {
         // Ana ekrandaki tablodan direkt veri çek
         const mainTableBody = document.getElementById('sales-table-body');
         if (!mainTableBody) {
-            showNotification('Ana ekrandaki tablo bulunamadı. Lütfen müşteriyi tekrar seçin.', 'warning');
+            showMessage('Ana ekrandaki tablo bulunamadı. Lütfen müşteriyi tekrar seçin.', 'warning');
             return;
         }
         
@@ -3344,11 +3361,11 @@ function printBalanceReport() {
             printWindow.close();
         }, 500);
         
-        showNotification('🖨️ Yazdırma penceresi açıldı', 'success');
+        showMessage('🖨️ Yazdırma penceresi açıldı', 'success');
         
     } catch (error) {
         console.error('Yazdırma hatası:', error);
-        showNotification('Yazdırma sırasında hata oluştu', 'error');
+        showMessage('Yazdırma sırasında hata oluştu', 'error');
     }
 }
 
@@ -3389,7 +3406,7 @@ function fixTurkishCharsForPDF(text) {
 function exportBalanceToPDF() {
     // Seçili müşteri kontrolü
     if (!currentCustomer) {
-        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        showMessage('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     
@@ -3401,7 +3418,7 @@ function exportBalanceToPDF() {
         // Ana ekrandaki tablodan direkt veri çek
         const mainTableBody = document.getElementById('sales-table-body');
         if (!mainTableBody) {
-            showNotification('Ana ekrandaki tablo bulunamadı. Lütfen müşteriyi tekrar seçin.', 'warning');
+            showMessage('Ana ekrandaki tablo bulunamadı. Lütfen müşteriyi tekrar seçin.', 'warning');
             return;
         }
         
@@ -3639,11 +3656,11 @@ function exportBalanceToPDF() {
         const fileName = `${customerName.replace(/[^a-zA-Z0-9]/g, '_')}_Cari_Hesap_Ozeti_${currentDateStr.replace(/\./g, '_')}.pdf`;
         doc.save(fileName);
         
-        showNotification('📄 PDF dosyası başarıyla indirildi', 'success');
+        showMessage('📄 PDF dosyası başarıyla indirildi', 'success');
         
     } catch (error) {
         console.error('PDF export hatası:', error);
-        showNotification('PDF export sırasında hata oluştu', 'error');
+        showMessage('PDF export sırasında hata oluştu', 'error');
     }
 }
 
@@ -3651,7 +3668,7 @@ function exportBalanceToPDF() {
 function exportBalanceToExcel() {
     // Seçili müşteri kontrolü
     if (!currentCustomer) {
-        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        showMessage('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     
@@ -3663,7 +3680,7 @@ function exportBalanceToExcel() {
         // Ana ekrandaki tablodan direkt veri çek
         const mainTableBody = document.getElementById('sales-table-body');
         if (!mainTableBody) {
-            showNotification('Ana ekrandaki tablo bulunamadı. Lütfen müşteriyi tekrar seçin.', 'warning');
+            showMessage('Ana ekrandaki tablo bulunamadı. Lütfen müşteriyi tekrar seçin.', 'warning');
             return;
         }
         
@@ -3773,11 +3790,11 @@ function exportBalanceToExcel() {
         link.click();
         document.body.removeChild(link);
         
-        showNotification('📊 Excel dosyası başarıyla indirildi', 'success');
+        showMessage('📊 Excel dosyası başarıyla indirildi', 'success');
         
     } catch (error) {
         console.error('Excel export hatası:', error);
-        showNotification('Excel export sırasında hata oluştu', 'error');
+        showMessage('Excel export sırasında hata oluştu', 'error');
     }
 }
 
@@ -3785,7 +3802,7 @@ function exportBalanceToExcel() {
 function copyBalanceToClipboard() {
     // Seçili müşteri kontrolü
     if (!currentCustomer) {
-        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        showMessage('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     
@@ -3797,7 +3814,7 @@ function copyBalanceToClipboard() {
         // Ana ekrandaki tablodan direkt veri çek
         const mainTableBody = document.getElementById('sales-table-body');
         if (!mainTableBody) {
-            showNotification('Ana ekrandaki tablo bulunamadı. Lütfen müşteriyi tekrar seçin.', 'warning');
+            showMessage('Ana ekrandaki tablo bulunamadı. Lütfen müşteriyi tekrar seçin.', 'warning');
             return;
         }
         
@@ -3882,7 +3899,7 @@ function copyBalanceToClipboard() {
         // Clipboard API kullanarak kopyala
         if (navigator.clipboard) {
             navigator.clipboard.writeText(copyText).then(() => {
-                showNotification('📋 Rapor panoya kopyalandı', 'success');
+                showMessage('📋 Rapor panoya kopyalandı', 'success');
             }).catch(() => {
                 fallbackCopyToClipboard(copyText);
             });
@@ -3892,7 +3909,7 @@ function copyBalanceToClipboard() {
         
     } catch (error) {
         console.error('Kopyalama hatası:', error);
-        showNotification('Kopyalama sırasında hata oluştu', 'error');
+        showMessage('Kopyalama sırasında hata oluştu', 'error');
     }
 }
 
@@ -3909,9 +3926,9 @@ function fallbackCopyToClipboard(text) {
     
     try {
         document.execCommand('copy');
-        showNotification('📋 Rapor panoya kopyalandı', 'success');
+        showMessage('📋 Rapor panoya kopyalandı', 'success');
     } catch (err) {
-        showNotification('❌ Kopyalama başarısız oldu', 'error');
+        showMessage('❌ Kopyalama başarısız oldu', 'error');
     }
     
     document.body.removeChild(textArea);
@@ -4149,186 +4166,90 @@ function showReportsModal() {
     }, 100);
 }
 
-// Ürün Yönetimi Modal - Profesyonel Versiyon
-// ESKİ ÜRÜN YÖNETİMİ DEVRE DIŞI - product-management.js kullanılıyor
-/* 
+// Ürün Yönetimi Modal - Basit Eski Tasarım
 async function showProductManagement() {
     try {
-        // Mevcut ürünleri getir
-        const products = await window.ipcRenderer.invoke('get-products');
-        
-    const modalHtml = `
-            <div id="product-management-modal" class="modal active" onclick="if(event.target.id === 'product-management-modal') closeModal('product-management-modal')">
-                <div class="modal-content" style="max-width: 1200px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
-                <div class="modal-header">
-                        <h2>📋 Ürün Yönetimi</h2>
-                        <button class="close-btn" onclick="closeModal('product-management-modal')">&times;</button>
-                </div>
-                    
-                <div style="padding: 20px;">
-                        <!-- Üst Butonlar -->
-                        <div style="display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap;">
-                            <button onclick="showAddProductModal()" 
-                                    style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                                ➕ Yeni Ürün Ekle
-                            </button>
-                            <button onclick="showQuickAddProduct()" 
-                                    style="padding: 12px 24px; background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                                ⚡ Hızlı Ekle
-                            </button>
-                            <button onclick="exportProductsToExcel()" 
-                                    style="padding: 12px 24px; background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                                📊 Excel'e Aktar
-                            </button>
-                            <button onclick="printProducts()" 
-                                    style="padding: 12px 24px; background: linear-gradient(135deg, #9f7aea 0%, #805ad5 100%); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                                🖨️ Yazdır
-                            </button>
+        // Yeni ürün modülündeki fonksiyonu kullan
+        if (typeof window.showProductManagementModule === 'function') {
+            window.showProductManagementModule();
+        } else {
+            // Fallback: Basit modal göster
+            const products = await window.electronAPI.getProducts();
+            
+            const modalHtml = `
+                <div id="product-management-modal" class="modal active" onclick="if(event.target.id === 'product-management-modal') closeModal('product-management-modal')">
+                    <div class="modal-content" style="max-width: 1000px;" onclick="event.stopPropagation()">
+                        <div class="modal-header">
+                            <h2>📋 Ürün Yönetimi</h2>
+                            <button class="close-btn" onclick="closeModal('product-management-modal')">&times;</button>
                         </div>
                         
-                        <!-- Arama ve Filtreler -->
-                        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 15px; align-items: end;">
-                        <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">🔍 Ürün Ara</label>
-                                    <input type="text" id="product-search" placeholder="Ürün adı, kodu veya barkod..." 
-                                           style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;"
-                                           onkeyup="filterProducts()">
-                                </div>
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">📦 Kategori</label>
-                                    <select id="category-filter" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" onchange="filterProducts()">
-                                        <option value="">Tüm Kategoriler</option>
-                                        <option value="Elektronik">Elektronik</option>
-                                        <option value="Giyim">Giyim</option>
-                                        <option value="Gıda">Gıda</option>
-                                        <option value="Ev & Yaşam">Ev & Yaşam</option>
-                                        <option value="Spor">Spor</option>
-                                        <option value="Kitap">Kitap</option>
-                                        <option value="Diğer">Diğer</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">📊 Durum</label>
-                                    <select id="status-filter" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" onchange="filterProducts()">
-                                        <option value="">Tüm Durumlar</option>
-                                        <option value="active">Aktif</option>
-                                        <option value="inactive">Pasif</option>
-                                        <option value="low-stock">Düşük Stok</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <button onclick="clearProductFilters()" 
-                                            style="padding: 10px 20px; background: #6b7280; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                                        🗑️ Temizle
-                                    </button>
-                                </div>
+                        <div style="padding: 20px;">
+                            <!-- Basit Butonlar -->
+                            <div style="margin-bottom: 20px;">
+                                <button onclick="showAddProductModal()" class="btn btn-primary" style="margin-right: 10px;">
+                                    ➕ Yeni Ürün Ekle
+                                </button>
+                                <button onclick="exportProductsToExcel()" class="btn btn-secondary" style="margin-right: 10px;">
+                                    📊 Excel'e Aktar
+                                </button>
+                                <button onclick="printProducts()" class="btn btn-secondary">
+                                    🖨️ Yazdır
+                                </button>
                             </div>
-                        </div>
-                        
-                        <!-- Ürünler Tablosu -->
-                        <div style="background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-                            <div style="overflow-x: auto;">
+                            
+                            <!-- Basit Arama -->
+                            <div style="margin-bottom: 20px;">
+                                <input type="text" id="product-search" placeholder="Ürün ara..." 
+                                       style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;"
+                                       onkeyup="filterProducts()">
+                            </div>
+                            
+                            <!-- Basit Tablo -->
+                            <div style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd;">
                                 <table style="width: 100%; border-collapse: collapse;">
-                                    <thead style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                                    <thead style="background: #f5f5f5;">
                                         <tr>
-                                            <th style="padding: 15px; text-align: left; font-weight: 600; font-size: 14px;">📦 Ürün Bilgileri</th>
-                                            <th style="padding: 15px; text-align: left; font-weight: 600; font-size: 14px;">🏷️ Kod & Barkod</th>
-                                            <th style="padding: 15px; text-align: center; font-weight: 600; font-size: 14px;">📊 Stok</th>
-                                            <th style="padding: 15px; text-align: right; font-weight: 600; font-size: 14px;">💰 Fiyatlar</th>
-                                            <th style="padding: 15px; text-align: center; font-weight: 600; font-size: 14px;">📈 KDV</th>
-                                            <th style="padding: 15px; text-align: center; font-weight: 600; font-size: 14px;">📂 Kategori</th>
-                                            <th style="padding: 15px; text-align: center; font-weight: 600; font-size: 14px;">⚡ Durum</th>
-                                            <th style="padding: 15px; text-align: center; font-weight: 600; font-size: 14px;">🔧 İşlemler</th>
+                                            <th style="padding: 10px; border: 1px solid #ddd;">Ürün Adı</th>
+                                            <th style="padding: 10px; border: 1px solid #ddd;">Kod</th>
+                                            <th style="padding: 10px; border: 1px solid #ddd;">Fiyat</th>
+                                            <th style="padding: 10px; border: 1px solid #ddd;">Stok</th>
+                                            <th style="padding: 10px; border: 1px solid #ddd;">İşlemler</th>
                                         </tr>
                                     </thead>
                                     <tbody id="products-table-body">
                                         ${products.map(product => `
-                                            <tr style="border-bottom: 1px solid #e5e7eb;" data-product-id="${product.id}">
-                                                <td style="padding: 15px;">
-                                                    <div style="font-weight: 600; color: #374151; margin-bottom: 5px;">${product.name}</div>
-                                                    <div style="font-size: 12px; color: #6b7280;">${product.description || 'Açıklama yok'}</div>
-                                                </td>
-                                                <td style="padding: 15px;">
-                                                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 3px;">Kod: ${product.code || '-'}</div>
-                                                    <div style="font-size: 12px; color: #6b7280;">Barkod: ${product.barcode || '-'}</div>
-                                                </td>
-                                                <td style="padding: 15px; text-align: center;">
-                                                    <div style="font-weight: 600; color: ${product.stock <= product.min_stock ? '#e53e3e' : '#38a169'};">
-                                                        ${product.stock} ${product.unit}
-                                                    </div>
-                                                    ${product.stock <= product.min_stock ? '<div style="font-size: 11px; color: #e53e3e;">⚠️ Düşük Stok</div>' : ''}
-                                                </td>
-                                                <td style="padding: 15px; text-align: right;">
-                                                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 3px;">Alış: ₺${formatMoney(product.purchase_price)}</div>
-                                                    <div style="font-weight: 600; color: #38a169;">Satış: ₺${formatMoney(product.sale_price)}</div>
-                                                </td>
-                                                <td style="padding: 15px; text-align: center;">
-                                                    <span style="background: #e0e7ff; color: #3730a3; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">
-                                                        %${product.vat_rate}
-                                                    </span>
-                                                </td>
-                                                <td style="padding: 15px; text-align: center;">
-                                                    <span style="background: #f3f4f6; color: #374151; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                                                        ${product.category || 'Genel'}
-                                                    </span>
-                                                </td>
-                                                <td style="padding: 15px; text-align: center;">
-                                                    <span style="background: ${product.is_active ? '#d1fae5' : '#fee2e2'}; color: ${product.is_active ? '#065f46' : '#991b1b'}; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">
-                                                        ${product.is_active ? '✅ Aktif' : '❌ Pasif'}
-                                                    </span>
-                                                </td>
-                                                <td style="padding: 15px; text-align: center;">
-                                                    <div style="display: flex; gap: 5px; justify-content: center;">
-                                                        <button onclick="editProduct(${product.id})" 
-                                                                style="padding: 6px 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">
-                                                            ✏️
-                                                        </button>
-                                                        ${window.currentUser && window.currentUser.role === 'admin' ? 
-                                                            '<button onclick="deleteProduct(' + product.id + ')" style="padding: 6px 12px; background: #ef4444; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">🗑️</button>' : 
-                                                            ''
-                                                        }
-                                                    </div>
+                                            <tr>
+                                                <td style="padding: 10px; border: 1px solid #ddd;">${product.name || '-'}</td>
+                                                <td style="padding: 10px; border: 1px solid #ddd;">${product.code || '-'}</td>
+                                                <td style="padding: 10px; border: 1px solid #ddd;">${product.price ? product.price.toFixed(2) + ' ₺' : '-'}</td>
+                                                <td style="padding: 10px; border: 1px solid #ddd;">${product.stock || '-'}</td>
+                                                <td style="padding: 10px; border: 1px solid #ddd;">
+                                                    <button onclick="editProduct(${product.id})" class="btn btn-sm" style="margin-right: 5px;">Düzenle</button>
+                                                    <button onclick="deleteProduct(${product.id})" class="btn btn-sm btn-danger">Sil</button>
                                                 </td>
                                             </tr>
                                         `).join('')}
                                     </tbody>
                                 </table>
                             </div>
-                        </div>
-                        
-                        <!-- Özet Bilgiler -->
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px;">
-                            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; text-align: center;">
-                                <div style="font-size: 24px; font-weight: 700; margin-bottom: 5px;">${products.length}</div>
-                                <div style="font-size: 14px; opacity: 0.9;">Toplam Ürün</div>
-                            </div>
-                            <div style="background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; padding: 20px; border-radius: 10px; text-align: center;">
-                                <div style="font-size: 24px; font-weight: 700; margin-bottom: 5px;">${products.filter(p => p.is_active).length}</div>
-                                <div style="font-size: 14px; opacity: 0.9;">Aktif Ürün</div>
-                            </div>
-                            <div style="background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); color: white; padding: 20px; border-radius: 10px; text-align: center;">
-                                <div style="font-size: 24px; font-weight: 700; margin-bottom: 5px;">${products.filter(p => p.stock <= p.min_stock).length}</div>
-                                <div style="font-size: 14px; opacity: 0.9;">Düşük Stok</div>
-                            </div>
-                            <div style="background: linear-gradient(135deg, #9f7aea 0%, #805ad5 100%); color: white; padding: 20px; border-radius: 10px; text-align: center;">
-                                <div style="font-size: 24px; font-weight: 700; margin-bottom: 5px;">${new Set(products.map(p => p.category).filter(c => c)).size}</div>
-                                <div style="font-size: 14px; opacity: 0.9;">Kategori</div>
+                            
+                            <div style="margin-top: 20px; text-align: center; color: #666;">
+                                Toplam ${products.length} ürün
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        `;
-        
-        showOrCreateModal('product-management-modal', modalHtml);
+            `;
+            
+            showOrCreateModal('product-management-modal', modalHtml);
+        }
         
     } catch (error) {
         console.error('Product management modal error:', error);
-        showNotification('Ürünler yüklenirken hata oluştu', 'error');
+        showMessage('Ürünler yüklenirken hata oluştu', 'error');
     }
 }
-*/
 
 // Ürün filtreleme
 function filterProducts() {
@@ -4392,7 +4313,7 @@ function clearProductFilters() {
 async function deleteProduct(productId) {
     // Admin kontrolü
     if (!window.currentUser || window.currentUser.role !== 'admin') {
-        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        showMessage('Bu işlem için admin yetkisi gereklidir', 'error');
         return;
     }
     
@@ -4402,7 +4323,7 @@ async function deleteProduct(productId) {
     
     try {
         await window.ipcRenderer.invoke('delete-product', productId);
-        showNotification('✅ Ürün başarıyla silindi', 'success');
+        showMessage('✅ Ürün başarıyla silindi', 'success');
         
         // Satış ekranındaki ürün seçimini güncelle (silinen ürünü kaldır)
         if (typeof updateSaleProductSelectAfterDelete === 'function') {
@@ -4415,7 +4336,7 @@ async function deleteProduct(productId) {
         
     } catch (error) {
         console.error('Delete product error:', error);
-        showNotification('Ürün silinirken hata oluştu', 'error');
+        showMessage('Ürün silinirken hata oluştu', 'error');
     }
 }
 
@@ -4442,11 +4363,11 @@ async function exportProductsToExcel() {
         link.click();
         document.body.removeChild(link);
         
-        showNotification('✅ Ürünler Excel dosyasına aktarıldı', 'success');
+        showMessage('✅ Ürünler Excel dosyasına aktarıldı', 'success');
         
     } catch (error) {
         console.error('Export products error:', error);
-        showNotification('Ürünler aktarılırken hata oluştu', 'error');
+        showMessage('Ürünler aktarılırken hata oluştu', 'error');
     }
 }
 
@@ -4809,7 +4730,7 @@ async function showSettingsModal() {
         
     } catch (error) {
         console.error('Settings modal error:', error);
-        showNotification('Ayarlar yüklenirken hata oluştu', 'error');
+        showMessage('Ayarlar yüklenirken hata oluştu', 'error');
     }
 }
 
@@ -4853,13 +4774,13 @@ function handleLogoFileSelect(event) {
     if (file) {
         // Dosya tipini kontrol et
         if (!file.type.startsWith('image/')) {
-            showNotification('Lütfen geçerli bir resim dosyası seçin', 'error');
+            showMessage('Lütfen geçerli bir resim dosyası seçin', 'error');
             return;
         }
         
         // Dosya boyutunu kontrol et (max 5MB)
         if (file.size > 5 * 1024 * 1024) {
-            showNotification('Dosya boyutu 5MB\'dan küçük olmalıdır', 'error');
+            showMessage('Dosya boyutu 5MB\'dan küçük olmalıdır', 'error');
             return;
         }
         
@@ -4873,7 +4794,7 @@ function handleLogoFileSelect(event) {
             // Base64 verisini hidden input'a kaydet
             document.getElementById('logo_path').value = e.target.result;
             
-            showNotification('Logo başarıyla seçildi', 'success');
+            showMessage('Logo başarıyla seçildi', 'success');
         };
         
         reader.readAsDataURL(file);
@@ -4930,17 +4851,17 @@ async function saveCompanySettings(event) {
         const result = await window.ipcRenderer.invoke('update-company-settings', settingsData);
         
         if (result.success) {
-            showNotification('✅ Firma ayarları başarıyla kaydedildi', 'success');
+            showMessage('✅ Firma ayarları başarıyla kaydedildi', 'success');
             closeModal('settings-modal');
             // Header'ı güncelle
             await loadCompanySettings();
         } else {
-            showNotification('❌ Ayarlar kaydedilirken hata oluştu', 'error');
+            showMessage('❌ Ayarlar kaydedilirken hata oluştu', 'error');
         }
         
     } catch (error) {
         console.error('Save company settings error:', error);
-        showNotification('Ayarlar kaydedilirken hata oluştu', 'error');
+        showMessage('Ayarlar kaydedilirken hata oluştu', 'error');
     }
 }
 
@@ -4949,13 +4870,13 @@ async function saveCompanySettings(event) {
 // Finansal Özet Raporu
 async function generateFinancialReport() {
     try {
-        showNotification('💰 Genel finansal özet raporu hazırlanıyor...', 'info');
+        showMessage('💰 Genel finansal özet raporu hazırlanıyor...', 'info');
     closeModal('reports-modal');
         
         // Tüm müşterileri getir
         const customers = await window.ipcRenderer.invoke('get-customers');
         if (!customers || customers.length === 0) {
-            showNotification('Müşteri bulunamadı', 'warning');
+            showMessage('Müşteri bulunamadı', 'warning');
             return;
         }
         
@@ -4992,7 +4913,7 @@ async function generateFinancialReport() {
         
     } catch (error) {
         console.error('Finansal rapor hatası:', error);
-        showNotification('Finansal rapor oluşturulurken hata oluştu', 'error');
+        showMessage('Finansal rapor oluşturulurken hata oluştu', 'error');
     }
 }
 
@@ -5147,11 +5068,11 @@ async function exportGeneralFinancialToExcel() {
         link.click();
         document.body.removeChild(link);
         
-        showNotification('📊 Genel finansal rapor Excel\'e aktarıldı', 'success');
+        showMessage('📊 Genel finansal rapor Excel\'e aktarıldı', 'success');
         
     } catch (error) {
         console.error('Excel export hatası:', error);
-        showNotification('Excel export sırasında hata oluştu', 'error');
+        showMessage('Excel export sırasında hata oluştu', 'error');
     }
 }
 
@@ -5301,11 +5222,11 @@ async function exportGeneralFinancialToPDF() {
         // PDF'i indir
         doc.save(`Genel_Finansal_Ozet_${currentDateStr.replace(/\./g, '_')}.pdf`);
         
-        showNotification('📄 Genel finansal rapor PDF\'e aktarıldı', 'success');
+        showMessage('📄 Genel finansal rapor PDF\'e aktarıldı', 'success');
         
     } catch (error) {
         console.error('PDF export hatası:', error);
-        showNotification('PDF export sırasında hata oluştu', 'error');
+        showMessage('PDF export sırasında hata oluştu', 'error');
     }
 }
 
@@ -5380,23 +5301,23 @@ function printGeneralFinancialReport() {
         printWindow.document.close();
         printWindow.print();
         
-        showNotification('🖨️ Genel finansal rapor yazdırıldı', 'success');
+        showMessage('🖨️ Genel finansal rapor yazdırıldı', 'success');
         
     } catch (error) {
         console.error('Print hatası:', error);
-        showNotification('Yazdırma sırasında hata oluştu', 'error');
+        showMessage('Yazdırma sırasında hata oluştu', 'error');
     }
 }
 
 // Müşteri Analiz Raporu
 async function generateCustomerReport() {
     try {
-        showNotification('👥 Müşteri analiz raporu hazırlanıyor...', 'info');
+        showMessage('👥 Müşteri analiz raporu hazırlanıyor...', 'info');
         
         // Tüm müşterileri getir
         const customers = await window.ipcRenderer.invoke('get-customers');
         if (!customers || customers.length === 0) {
-            showNotification('Müşteri bulunamadı', 'warning');
+            showMessage('Müşteri bulunamadı', 'warning');
             return;
         }
         
@@ -5435,19 +5356,19 @@ async function generateCustomerReport() {
         
     } catch (error) {
         console.error('Müşteri analiz raporu hatası:', error);
-        showNotification('Müşteri analiz raporu oluşturulurken hata oluştu', 'error');
+        showMessage('Müşteri analiz raporu oluşturulurken hata oluştu', 'error');
     }
 }
 
 // İşlem Detay Raporu
 async function generateTransactionReport() {
     try {
-        showNotification('📋 İşlem detay raporu hazırlanıyor...', 'info');
+        showMessage('📋 İşlem detay raporu hazırlanıyor...', 'info');
         
         // Tüm müşterileri getir
         const customers = await window.ipcRenderer.invoke('get-customers');
         if (!customers || customers.length === 0) {
-            showNotification('Müşteri bulunamadı', 'warning');
+            showMessage('Müşteri bulunamadı', 'warning');
             return;
         }
         
@@ -5487,19 +5408,19 @@ async function generateTransactionReport() {
         
     } catch (error) {
         console.error('İşlem detay raporu hatası:', error);
-        showNotification('İşlem detay raporu oluşturulurken hata oluştu', 'error');
+        showMessage('İşlem detay raporu oluşturulurken hata oluştu', 'error');
     }
 }
 
 // Borç Analiz Raporu
 async function generateDebtReport() {
     try {
-        showNotification('💳 Borç analiz raporu hazırlanıyor...', 'info');
+        showMessage('💳 Borç analiz raporu hazırlanıyor...', 'info');
         
         // Tüm müşterileri getir
         const customers = await window.ipcRenderer.invoke('get-customers');
         if (!customers || customers.length === 0) {
-            showNotification('Müşteri bulunamadı', 'warning');
+            showMessage('Müşteri bulunamadı', 'warning');
             return;
         }
         
@@ -5549,14 +5470,14 @@ async function generateDebtReport() {
         
     } catch (error) {
         console.error('Borç analiz raporu hatası:', error);
-        showNotification('Borç analiz raporu oluşturulurken hata oluştu', 'error');
+        showMessage('Borç analiz raporu oluşturulurken hata oluştu', 'error');
     }
 }
 
 // Aylık Performans Raporu
 async function generateMonthlyReport() {
     try {
-        showNotification('📅 Aylık performans raporu hazırlanıyor...', 'info');
+        showMessage('📅 Aylık performans raporu hazırlanıyor...', 'info');
         
         // Son 12 ayın verilerini getir
         const monthlyData = [];
@@ -5609,19 +5530,19 @@ async function generateMonthlyReport() {
         
     } catch (error) {
         console.error('Aylık performans raporu hatası:', error);
-        showNotification('Aylık performans raporu oluşturulurken hata oluştu', 'error');
+        showMessage('Aylık performans raporu oluşturulurken hata oluştu', 'error');
     }
 }
 
 // Ürün Satış Raporu
 async function generateProductReport() {
     try {
-        showNotification('📦 Ürün satış raporu hazırlanıyor...', 'info');
+        showMessage('📦 Ürün satış raporu hazırlanıyor...', 'info');
         
         // Tüm müşterileri getir
         const customers = await window.ipcRenderer.invoke('get-customers');
         if (!customers || customers.length === 0) {
-            showNotification('Müşteri bulunamadı', 'warning');
+            showMessage('Müşteri bulunamadı', 'warning');
             return;
         }
         
@@ -5670,14 +5591,14 @@ async function generateProductReport() {
         
     } catch (error) {
         console.error('Ürün satış raporu hatası:', error);
-        showNotification('Ürün satış raporu oluşturulurken hata oluştu', 'error');
+        showMessage('Ürün satış raporu oluşturulurken hata oluştu', 'error');
     }
 }
 
 // Hızlı İşlemler Fonksiyonları
 function exportAllToExcel() {
     if (!currentCustomer) {
-        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        showMessage('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     exportBalanceToExcel();
@@ -5685,7 +5606,7 @@ function exportAllToExcel() {
 
 function exportAllToPDF() {
     if (!currentCustomer) {
-        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        showMessage('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     exportBalanceToPDF();
@@ -5693,14 +5614,14 @@ function exportAllToPDF() {
 
 function printAllReports() {
     if (!currentCustomer) {
-        showNotification('Lütfen önce bir müşteri seçin', 'warning');
+        showMessage('Lütfen önce bir müşteri seçin', 'warning');
         return;
     }
     printBalanceReport();
 }
 
 function refreshReports() {
-    showNotification('🔄 Raporlar yenileniyor...', 'info');
+    showMessage('🔄 Raporlar yenileniyor...', 'info');
     closeModal('reports-modal');
     setTimeout(() => showReportsModal(), 500);
 }
@@ -5810,7 +5731,7 @@ function printTransactionReport() {
     try {
         const transactions = window.currentTransactionReport;
         if (!transactions || transactions.length === 0) {
-            showNotification('Yazdırılacak veri bulunamadı', 'error');
+            showMessage('Yazdırılacak veri bulunamadı', 'error');
             return;
         }
         
@@ -5901,11 +5822,11 @@ function printTransactionReport() {
             printWindow.print();
         }, 500);
         
-        showNotification('İşlem detay raporu yazdırma için hazırlandı', 'success');
+        showMessage('İşlem detay raporu yazdırma için hazırlandı', 'success');
         
     } catch (error) {
         console.error('İşlem detay raporu yazdırma hatası:', error);
-        showNotification('Yazdırma sırasında hata oluştu', 'error');
+        showMessage('Yazdırma sırasında hata oluştu', 'error');
     }
 }
 
@@ -5914,7 +5835,7 @@ function exportTransactionReportToExcel() {
     try {
         const transactions = window.currentTransactionReport;
         if (!transactions || transactions.length === 0) {
-            showNotification('Aktarılacak veri bulunamadı', 'error');
+            showMessage('Aktarılacak veri bulunamadı', 'error');
             return;
         }
         
@@ -5948,11 +5869,11 @@ function exportTransactionReportToExcel() {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         
-        showNotification('İşlem detay raporu Excel dosyası olarak indirildi', 'success');
+        showMessage('İşlem detay raporu Excel dosyası olarak indirildi', 'success');
         
     } catch (error) {
         console.error('Excel aktarım hatası:', error);
-        showNotification('Excel aktarımı sırasında hata oluştu', 'error');
+        showMessage('Excel aktarımı sırasında hata oluştu', 'error');
     }
 }
 
@@ -6014,7 +5935,7 @@ function printDebtAnalysis() {
     try {
         const debtAnalysis = window.currentDebtAnalysis;
         if (!debtAnalysis || debtAnalysis.length === 0) {
-            showNotification('Yazdırılacak veri bulunamadı', 'error');
+            showMessage('Yazdırılacak veri bulunamadı', 'error');
             return;
         }
         
@@ -6101,11 +6022,11 @@ function printDebtAnalysis() {
             printWindow.print();
         }, 500);
         
-        showNotification('Borç analiz raporu yazdırma için hazırlandı', 'success');
+        showMessage('Borç analiz raporu yazdırma için hazırlandı', 'success');
         
     } catch (error) {
         console.error('Borç analiz raporu yazdırma hatası:', error);
-        showNotification('Yazdırma sırasında hata oluştu', 'error');
+        showMessage('Yazdırma sırasında hata oluştu', 'error');
     }
 }
 
@@ -6114,7 +6035,7 @@ function exportDebtAnalysisToExcel() {
     try {
         const debtAnalysis = window.currentDebtAnalysis;
         if (!debtAnalysis || debtAnalysis.length === 0) {
-            showNotification('Aktarılacak veri bulunamadı', 'error');
+            showMessage('Aktarılacak veri bulunamadı', 'error');
             return;
         }
         
@@ -6147,11 +6068,11 @@ function exportDebtAnalysisToExcel() {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         
-        showNotification('Borç analiz raporu Excel dosyası olarak indirildi', 'success');
+        showMessage('Borç analiz raporu Excel dosyası olarak indirildi', 'success');
         
     } catch (error) {
         console.error('Excel aktarım hatası:', error);
-        showNotification('Excel aktarımı sırasında hata oluştu', 'error');
+        showMessage('Excel aktarımı sırasında hata oluştu', 'error');
     }
 }
 
@@ -6258,17 +6179,17 @@ function showProductReportModal(productData) {
 }
 
 function restoreData() {
-    showNotification('📁 Veri geri yükleme yakında eklenecek', 'info');
+    showMessage('📁 Veri geri yükleme yakında eklenecek', 'info');
 }
 
 function clearData() {
     if (confirm('Tüm verileri silmek istediğinizden emin misiniz? Bu işlem geri alınamaz!')) {
-        showNotification('🗑️ Veri temizleme yakında eklenecek', 'warning');
+        showMessage('🗑️ Veri temizleme yakında eklenecek', 'warning');
     }
 }
 
 function saveSettings() {
-    showNotification('💾 Ayarlar kaydedildi', 'success');
+    showMessage('💾 Ayarlar kaydedildi', 'success');
     closeModal('settings-modal');
 }
 
@@ -6305,7 +6226,7 @@ async function loadCustomersForSearch() {
         
     } catch (error) {
         console.error('Müşteriler yüklenirken hata:', error);
-        showNotification('Müşteriler yüklenirken hata oluştu', 'error');
+        showMessage('Müşteriler yüklenirken hata oluştu', 'error');
     }
 }
 
@@ -6415,11 +6336,11 @@ async function selectCustomerFromSearchModal(customerId) {
         // Müşteriyi seç
         await selectCustomer(customerId);
         
-        showNotification(`✅ ${allCustomersForSearch.find(c => c.id === customerId)?.name} seçildi`, 'success');
+        showMessage(`✅ ${allCustomersForSearch.find(c => c.id === customerId)?.name} seçildi`, 'success');
         
     } catch (error) {
         console.error('Müşteri seçilirken hata:', error);
-        showNotification('Müşteri seçilirken hata oluştu', 'error');
+        showMessage('Müşteri seçilirken hata oluştu', 'error');
     }
 }
 
@@ -6479,11 +6400,11 @@ function showAddCustomerModalFromSearch() {
 
 function printReport() {
     if (!currentCustomer) {
-        showNotification('Önce bir müşteri seçin', 'error');
+        showMessage('Önce bir müşteri seçin', 'error');
         return;
     }
     
-    showNotification(`${currentCustomer.name} müşterisi için yazdırma raporu hazırlanıyor...`, 'info');
+    showMessage(`${currentCustomer.name} müşterisi için yazdırma raporu hazırlanıyor...`, 'info');
     // TODO: Implement print functionality
 }
 
@@ -6492,7 +6413,7 @@ function printMonthlyReport() {
     try {
         const monthlyData = window.currentMonthlyReport;
         if (!monthlyData || monthlyData.length === 0) {
-            showNotification('Yazdırılacak veri bulunamadı', 'error');
+            showMessage('Yazdırılacak veri bulunamadı', 'error');
             return;
         }
         
@@ -6572,11 +6493,11 @@ function printMonthlyReport() {
             printWindow.print();
         }, 500);
         
-        showNotification('Aylık performans raporu yazdırma için hazırlandı', 'success');
+        showMessage('Aylık performans raporu yazdırma için hazırlandı', 'success');
         
     } catch (error) {
         console.error('Aylık rapor yazdırma hatası:', error);
-        showNotification('Yazdırma sırasında hata oluştu', 'error');
+        showMessage('Yazdırma sırasında hata oluştu', 'error');
     }
 }
 
@@ -6585,7 +6506,7 @@ function printProductReport() {
     try {
         const productData = window.currentProductReport;
         if (!productData || productData.length === 0) {
-            showNotification('Yazdırılacak veri bulunamadı', 'error');
+            showMessage('Yazdırılacak veri bulunamadı', 'error');
             return;
         }
         
@@ -6664,11 +6585,11 @@ function printProductReport() {
             printWindow.print();
         }, 500);
         
-        showNotification('Ürün satış raporu yazdırma için hazırlandı', 'success');
+        showMessage('Ürün satış raporu yazdırma için hazırlandı', 'success');
         
     } catch (error) {
         console.error('Ürün raporu yazdırma hatası:', error);
-        showNotification('Yazdırma sırasında hata oluştu', 'error');
+        showMessage('Yazdırma sırasında hata oluştu', 'error');
     }
 }
 
@@ -6904,20 +6825,20 @@ async function loadRollbackOptions() {
 // Manuel yedek oluştur
 async function createManualBackup() {
     try {
-        showNotification('Manuel yedek oluşturuluyor...', 'info');
+        showMessage('Manuel yedek oluşturuluyor...', 'info');
         
         const result = await window.electronAPI.createBackup('Manuel yedek');
         
         if (result.success) {
-            showNotification('Manuel yedek başarıyla oluşturuldu', 'success');
+            showMessage('Manuel yedek başarıyla oluşturuldu', 'success');
             loadVersionInfo(); // Bilgileri yenile
         } else {
-            showNotification('Yedek oluşturulurken hata oluştu', 'error');
+            showMessage('Yedek oluşturulurken hata oluştu', 'error');
         }
         
     } catch (error) {
         console.error('Manual backup error:', error);
-        showNotification('Yedek oluşturulurken hata oluştu', 'error');
+        showMessage('Yedek oluşturulurken hata oluştu', 'error');
     }
 }
 
@@ -6988,7 +6909,7 @@ async function showBackupList() {
         
     } catch (error) {
         console.error('Backup list error:', error);
-        showNotification('Yedek listesi yüklenirken hata oluştu', 'error');
+        showMessage('Yedek listesi yüklenirken hata oluştu', 'error');
     }
 }
 
@@ -7043,7 +6964,7 @@ async function showMigrationLogs() {
         
     } catch (error) {
         console.error('Migration logs error:', error);
-        showNotification('Migration logları yüklenirken hata oluştu', 'error');
+        showMessage('Migration logları yüklenirken hata oluştu', 'error');
     }
 }
 
@@ -7052,7 +6973,7 @@ async function performRollback() {
     const targetVersion = document.getElementById('rollback-target-version').value;
     
     if (!targetVersion) {
-        showNotification('Lütfen hedef version seçin', 'warning');
+        showMessage('Lütfen hedef version seçin', 'warning');
         return;
     }
     
@@ -7061,41 +6982,41 @@ async function performRollback() {
     }
     
     try {
-        showNotification('Geri alma işlemi başlatılıyor...', 'info');
+        showMessage('Geri alma işlemi başlatılıyor...', 'info');
         
         const result = await window.electronAPI.performRollback(targetVersion);
         
         if (result.success) {
-            showNotification('Geri alma işlemi başarıyla tamamlandı', 'success');
+            showMessage('Geri alma işlemi başarıyla tamamlandı', 'success');
             loadVersionInfo(); // Bilgileri yenile
             closeModal('settings-modal');
         } else {
-            showNotification('Geri alma işlemi başarısız', 'error');
+            showMessage('Geri alma işlemi başarısız', 'error');
         }
         
     } catch (error) {
         console.error('Rollback error:', error);
-        showNotification('Geri alma işlemi sırasında hata oluştu', 'error');
+        showMessage('Geri alma işlemi sırasında hata oluştu', 'error');
     }
 }
 
 // Migration testi
 async function testMigration() {
     try {
-        showNotification('Migration testi başlatılıyor...', 'info');
+        showMessage('Migration testi başlatılıyor...', 'info');
         
         const result = await window.electronAPI.testMigration();
         
         if (result.success) {
-            showNotification('Migration testi başarıyla tamamlandı', 'success');
+            showMessage('Migration testi başarıyla tamamlandı', 'success');
             loadVersionInfo(); // Bilgileri yenile
         } else {
-            showNotification('Migration testi başarısız', 'error');
+            showMessage('Migration testi başarısız', 'error');
         }
         
     } catch (error) {
         console.error('Migration test error:', error);
-        showNotification('Migration testi sırasında hata oluştu', 'error');
+        showMessage('Migration testi sırasında hata oluştu', 'error');
     }
 }
 
@@ -7106,23 +7027,23 @@ async function restoreBackup(backupName) {
     }
     
     try {
-        showNotification('Yedek geri yükleniyor...', 'info');
+        showMessage('Yedek geri yükleniyor...', 'info');
         
         const result = await window.electronAPI.restoreBackup(backupName);
         
         if (result.success) {
-            showNotification('Yedek başarıyla geri yüklendi', 'success');
+            showMessage('Yedek başarıyla geri yüklendi', 'success');
             loadVersionInfo(); // Bilgileri yenile
             // Müşteri listesini güncelle
             try { await loadCustomers(); } catch (e) { console.warn('loadCustomers after restore failed:', e); }
             closeModal('backup-list-modal');
         } else {
-            showNotification('Yedek geri yüklenirken hata oluştu', 'error');
+            showMessage('Yedek geri yüklenirken hata oluştu', 'error');
         }
         
     } catch (error) {
         console.error('Restore backup error:', error);
-        showNotification('Yedek geri yüklenirken hata oluştu', 'error');
+        showMessage('Yedek geri yüklenirken hata oluştu', 'error');
     }
 }
 
@@ -7133,20 +7054,20 @@ async function deleteBackup(backupName) {
     }
     
     try {
-        showNotification('Yedek siliniyor...', 'info');
+        showMessage('Yedek siliniyor...', 'info');
         
         const result = await window.electronAPI.deleteBackup(backupName);
         
         if (result.success) {
-            showNotification('Yedek başarıyla silindi', 'success');
+            showMessage('Yedek başarıyla silindi', 'success');
             showBackupList(); // Listeyi yenile
         } else {
-            showNotification('Yedek silinirken hata oluştu', 'error');
+            showMessage('Yedek silinirken hata oluştu', 'error');
         }
         
     } catch (error) {
         console.error('Delete backup error:', error);
-        showNotification('Yedek silinirken hata oluştu', 'error');
+        showMessage('Yedek silinirken hata oluştu', 'error');
     }
 }
 
@@ -7201,7 +7122,7 @@ async function checkForUpdates() {
         
         if (!latestVersionEl || !updateStatusEl) return;
         
-        showNotification('GitHub\'dan güncellemeler kontrol ediliyor...', 'info');
+        showMessage('GitHub\'dan güncellemeler kontrol ediliyor...', 'info');
         
         // GitHub API üzerinden güncelleme kontrolü
         const result = await window.electronAPI.checkForUpdates();
@@ -7214,7 +7135,7 @@ async function checkForUpdates() {
             if (downloadBtn) downloadBtn.style.display = 'none';
             if (installBtn) installBtn.style.display = 'none';
             
-            showNotification('GitHub güncelleme kontrolü başarısız: ' + (result.error || 'Bilinmeyen hata'), 'error');
+            showMessage('GitHub güncelleme kontrolü başarısız: ' + (result.error || 'Bilinmeyen hata'), 'error');
             return;
         }
         
@@ -7255,7 +7176,7 @@ async function checkForUpdates() {
                 showReleaseNotes(result.releaseNotes, latestVersion, result.releaseUrl);
             }
             
-            showNotification(`Yeni güncelleme mevcut: ${latestVersion}`, 'success');
+            showMessage(`Yeni güncelleme mevcut: ${latestVersion}`, 'success');
             
         } else {
             updateStatusEl.textContent = 'Uygulamanız güncel';
@@ -7265,7 +7186,7 @@ async function checkForUpdates() {
             if (installBtn) installBtn.style.display = 'none';
         }
         
-        showNotification('Güncelleme kontrolü tamamlandı', 'success');
+        showMessage('Güncelleme kontrolü tamamlandı', 'success');
         
     } catch (error) {
         console.error('Check updates error:', error);
@@ -7278,7 +7199,7 @@ async function checkForUpdates() {
             updateStatusEl.style.color = '#ef4444';
         }
         
-        showNotification('Güncelleme kontrolü başarısız', 'error');
+        showMessage('Güncelleme kontrolü başarısız', 'error');
     }
 }
 
@@ -7311,11 +7232,11 @@ async function downloadUpdate() {
         
         const downloadUrl = downloadBtn.getAttribute('data-download-url');
         if (!downloadUrl) {
-            showNotification('İndirme URL\'si bulunamadı', 'error');
+            showMessage('İndirme URL\'si bulunamadı', 'error');
             return;
         }
         
-        showNotification('Güncelleme indiriliyor...', 'info');
+        showMessage('Güncelleme indiriliyor...', 'info');
         
         // Progress bar'ı göster
         progressDiv.style.display = 'block';
@@ -7330,14 +7251,14 @@ async function downloadUpdate() {
             downloadBtn.style.display = 'none';
             if (installBtn) installBtn.style.display = 'inline-block';
             
-            showNotification('Güncelleme indirildi', 'success');
+            showMessage('Güncelleme indirildi', 'success');
         } else {
             throw new Error(result.error || 'İndirme başarısız');
         }
         
     } catch (error) {
         console.error('Download update error:', error);
-        showNotification('Güncelleme indirilirken hata oluştu', 'error');
+        showMessage('Güncelleme indirilirken hata oluştu', 'error');
     }
 }
 
@@ -7354,7 +7275,7 @@ async function installUpdate() {
             return;
         }
         
-        showNotification('Güncelleme kuruluyor...', 'info');
+        showMessage('Güncelleme kuruluyor...', 'info');
         
         progressText.textContent = 'Kuruluyor...';
         
@@ -7363,7 +7284,7 @@ async function installUpdate() {
         
         if (result.success) {
             progressText.textContent = 'Kurulum tamamlandı';
-            showNotification('Güncelleme başarıyla kuruldu. Uygulama yeniden başlatılacak.', 'success');
+            showMessage('Güncelleme başarıyla kuruldu. Uygulama yeniden başlatılacak.', 'success');
             
             if (result.restartRequired) {
                 setTimeout(() => {
@@ -7378,7 +7299,7 @@ async function installUpdate() {
         
     } catch (error) {
         console.error('Install update error:', error);
-        showNotification('Güncelleme kurulurken hata oluştu', 'error');
+        showMessage('Güncelleme kurulurken hata oluştu', 'error');
     }
 }
 
@@ -7467,7 +7388,7 @@ async function manualVersionUpdate() {
         
     } catch (error) {
         console.error('Manual version update modal error:', error);
-        showNotification('Version güncelleme modalı açılırken hata oluştu', 'error');
+        showMessage('Version güncelleme modalı açılırken hata oluştu', 'error');
     }
 }
 
@@ -7477,14 +7398,14 @@ async function confirmVersionUpdate() {
         const newVersion = document.getElementById('new-version-input').value.trim();
         
         if (!newVersion) {
-            showNotification('Lütfen yeni version numarasını girin', 'error');
+            showMessage('Lütfen yeni version numarasını girin', 'error');
             return;
         }
         
         // Version formatını kontrol et
         const versionRegex = /^\d+\.\d+\.\d+$/;
         if (!versionRegex.test(newVersion)) {
-            showNotification('Geçersiz version formatı! Örnek: 1.2.0', 'error');
+            showMessage('Geçersiz version formatı! Örnek: 1.2.0', 'error');
             return;
         }
         
@@ -7493,7 +7414,7 @@ async function confirmVersionUpdate() {
         const currentVersion = config.appVersion || '1.1.0';
         
         if (newVersion === currentVersion) {
-            showNotification('Yeni version mevcut version ile aynı!', 'error');
+            showMessage('Yeni version mevcut version ile aynı!', 'error');
             return;
         }
         
@@ -7501,13 +7422,13 @@ async function confirmVersionUpdate() {
             return;
         }
         
-        showNotification('Version güncelleniyor...', 'info');
+        showMessage('Version güncelleniyor...', 'info');
         
         // IPC üzerinden version güncelleme
         const result = await window.electronAPI.updateAppVersion(newVersion);
         
         if (result.success) {
-            showNotification(`Version başarıyla ${newVersion} olarak güncellendi!`, 'success');
+            showMessage(`Version başarıyla ${newVersion} olarak güncellendi!`, 'success');
             
             // Modal'ı kapat
             closeModal('version-update-modal');
@@ -7527,7 +7448,7 @@ async function confirmVersionUpdate() {
         
     } catch (error) {
         console.error('Confirm version update error:', error);
-        showNotification('Version güncellenirken hata oluştu: ' + error.message, 'error');
+        showMessage('Version güncellenirken hata oluştu: ' + error.message, 'error');
     }
 }
 
@@ -7601,7 +7522,7 @@ async function showUpdateLogs() {
         
     } catch (error) {
         console.error('Show update logs error:', error);
-        showNotification('Güncelleme logları yüklenirken hata oluştu', 'error');
+        showMessage('Güncelleme logları yüklenirken hata oluştu', 'error');
     }
 }
 
@@ -7610,6 +7531,15 @@ async function showUpdateLogs() {
 // Uygulama başlangıcında session kontrolü
 async function initializeUserSession() {
     try {
+        // Önce ilk kurulum kontrolü yap
+        const firstTimeCheck = await window.electronAPI.checkFirstTimeSetup();
+        
+        if (firstTimeCheck.success && firstTimeCheck.isFirstTime) {
+            console.log('🎉 İlk kurulum tespit edildi');
+            showFirstTimeSetupModal();
+            return false;
+        }
+        
         // LocalStorage'dan session token'ı al
         const savedToken = localStorage.getItem('sessionToken');
         if (savedToken) {
@@ -7641,12 +7571,205 @@ async function initializeUserSession() {
 
 // Login modalını göster
 function showLoginModal() {
+    console.log('🔐 Login modal gösteriliyor...');
+    
     // Önce arka planı tamamen gizle
     const appContainer = document.querySelector('.app-container');
     if (appContainer) {
         appContainer.style.display = 'none';
+        console.log('📱 App container gizlendi');
     }
     
+    // Mevcut modal'ı temizle
+    const existingModal = document.getElementById('dynamic-login-modal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Tamamen yeni dinamik modal oluştur
+    const modalHtml = `
+        <div id="dynamic-login-modal" style="
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 99999;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        ">
+            <div style="
+                background: rgba(255, 255, 255, 0.95);
+                backdrop-filter: blur(20px);
+                border-radius: 24px;
+                padding: 0;
+                width: 90%;
+                max-width: 450px;
+                box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+                overflow: hidden;
+            ">
+                <!-- Header -->
+                <div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    padding: 40px 30px 30px 30px;
+                    text-align: center;
+                    color: white;
+                ">
+                    <div style="
+                        width: 80px;
+                        height: 80px;
+                        background: rgba(255, 255, 255, 0.2);
+                        border-radius: 50%;
+                        margin: 0 auto 20px auto;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 32px;
+                        backdrop-filter: blur(10px);
+                        border: 2px solid rgba(255, 255, 255, 0.3);
+                    ">
+                        🔐
+                    </div>
+                    <h1 style="
+                        margin: 0 0 8px 0;
+                        font-size: 28px;
+                        font-weight: 700;
+                        letter-spacing: -0.5px;
+                    ">Hoş Geldiniz</h1>
+                    <p style="
+                        margin: 0;
+                        font-size: 16px;
+                        opacity: 0.9;
+                        font-weight: 300;
+                    ">Hesabınıza giriş yapın</p>
+                </div>
+                
+                <!-- Form -->
+                <div style="padding: 40px 30px;">
+                    <form id="dynamic-login-form" style="margin: 0;">
+                        <div style="margin-bottom: 24px;">
+                            <label style="
+                                display: block;
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                                color: #374151;
+                                font-size: 14px;
+                            ">Kullanıcı Adı</label>
+                            <div style="position: relative;">
+                                <input type="text" name="username" required 
+                                       style="
+                                           width: 100%;
+                                           padding: 16px 20px 16px 50px;
+                                           border: 2px solid #e5e7eb;
+                                           border-radius: 12px;
+                                           font-size: 16px;
+                                           outline: none;
+                                           transition: all 0.3s ease;
+                                           background: #f9fafb;
+                                           box-sizing: border-box;
+                                       "
+                                       placeholder="Kullanıcı adınızı girin"
+                                       onfocus="this.style.borderColor='#667eea'; this.style.background='white'; this.style.boxShadow='0 0 0 3px rgba(102, 126, 234, 0.1)'"
+                                       onblur="this.style.borderColor='#e5e7eb'; this.style.background='#f9fafb'; this.style.boxShadow='none'">
+                                <div style="
+                                    position: absolute;
+                                    left: 16px;
+                                    top: 50%;
+                                    transform: translateY(-50%);
+                                    color: #9ca3af;
+                                    font-size: 18px;
+                                ">👤</div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 24px;">
+                            <label style="
+                                display: block;
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                                color: #374151;
+                                font-size: 14px;
+                            ">Şifre</label>
+                            <div style="position: relative;">
+                                <input type="password" name="password" required 
+                                       style="
+                                           width: 100%;
+                                           padding: 16px 20px 16px 50px;
+                                           border: 2px solid #e5e7eb;
+                                           border-radius: 12px;
+                                           font-size: 16px;
+                                           outline: none;
+                                           transition: all 0.3s ease;
+                                           background: #f9fafb;
+                                           box-sizing: border-box;
+                                       "
+                                       placeholder="Şifrenizi girin"
+                                       onfocus="this.style.borderColor='#667eea'; this.style.background='white'; this.style.boxShadow='0 0 0 3px rgba(102, 126, 234, 0.1)'"
+                                       onblur="this.style.borderColor='#e5e7eb'; this.style.background='#f9fafb'; this.style.boxShadow='none'">
+                                <div style="
+                                    position: absolute;
+                                    left: 16px;
+                                    top: 50%;
+                                    transform: translateY(-50%);
+                                    color: #9ca3af;
+                                    font-size: 18px;
+                                ">🔒</div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 30px;">
+                            <label style="
+                                display: flex;
+                                align-items: center;
+                                cursor: pointer;
+                                font-size: 14px;
+                                color: #6b7280;
+                            ">
+                                <input type="checkbox" name="rememberMe" style="margin-right: 8px;">
+                                Beni hatırla (30 gün)
+                            </label>
+                        </div>
+                        
+                        <button type="submit" style="
+                            width: 100%;
+                            padding: 16px;
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            border: none;
+                            border-radius: 12px;
+                            font-size: 16px;
+                            font-weight: 600;
+                            cursor: pointer;
+                            transition: all 0.3s ease;
+                            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+                        " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(102, 126, 234, 0.6)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(102, 126, 234, 0.4)'">
+                            🔑 Giriş Yap
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Modal'ı DOM'a ekle
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    console.log('✅ Dinamik login modal oluşturuldu');
+    
+    // Form submit handler
+    const form = document.getElementById('dynamic-login-form');
+    if (form) {
+        form.addEventListener('submit', handleDynamicLogin);
+        console.log('📝 Dinamik login form handler eklendi');
+    } else {
+        console.error('❌ Dinamik login form bulunamadı!');
+    }
+}
+
+// Eski dinamik modal fonksiyonu - artık kullanılmıyor
+function showLoginModalOld() {
     const modalHtml = `
         <div id="login-modal" style="
             position: fixed;
@@ -8208,8 +8331,128 @@ function showRegisterModal() {
     document.getElementById('register-form').addEventListener('submit', handleRegister);
 }
 
-// Login işlemi
-async function handleLogin(event) {
+// İlk kurulum modalını göster
+function showFirstTimeSetupModal() {
+    // Önce arka planı tamamen gizle
+    const appContainer = document.querySelector('.app-container');
+    if (appContainer) {
+        appContainer.style.display = 'none';
+    }
+    
+    // Modal'ı göster
+    const modal = document.getElementById('first-time-setup-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100vw';
+        modal.style.height = '100vh';
+        modal.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        modal.style.zIndex = '99999';
+        
+        // Form submit handler
+        document.getElementById('first-time-registration-form').addEventListener('submit', handleFirstTimeRegistration);
+    }
+}
+
+// İlk kurulum kayıt işlemi
+async function handleFirstTimeRegistration(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    
+    // Form validasyonu
+    const password = formData.get('password');
+    const confirmPassword = formData.get('confirmPassword');
+    
+    if (password !== confirmPassword) {
+        showMessage('Şifreler eşleşmiyor!', 'error');
+        return;
+    }
+    
+    if (password.length < 6) {
+        showMessage('Şifre en az 6 karakter olmalıdır!', 'error');
+        return;
+    }
+    
+    const userData = {
+        email: formData.get('email'),
+        phone: formData.get('phone'),
+        companyName: formData.get('companyName'),
+        fullName: formData.get('fullName'),
+        password: password
+    };
+    
+    // Loading state
+    const submitBtn = document.getElementById('register-btn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<span class="btn-icon">⏳</span>Kayıt Olunuyor...';
+    submitBtn.disabled = true;
+    submitBtn.classList.add('loading');
+    
+    try {
+        const result = await window.electronAPI.registerFirstUser(userData);
+        
+        if (result.success) {
+            showMessage(result.message, 'success');
+            
+            // 2 saniye sonra uygulamayı başlat
+            setTimeout(async () => {
+                // Modal'ı kapat
+                const modal = document.getElementById('first-time-setup-modal');
+                if (modal) {
+                    modal.style.display = 'none';
+                }
+                
+                // Uygulamayı göster
+                const appContainer = document.querySelector('.app-container');
+                if (appContainer) {
+                    appContainer.style.display = 'flex';
+                }
+                
+                // Kullanıcı bilgilerini ayarla
+                window.currentUser = {
+                    id: result.userId,
+                    email: userData.email,
+                    fullName: userData.fullName,
+                    companyName: userData.companyName,
+                    role: 'admin'
+                };
+                window.isLoggedIn = true;
+                
+                // Uygulama verilerini yükle
+                await loadCustomers();
+                if (typeof loadProductsData === 'function') await loadProductsData();
+                if (typeof loadCategoriesData === 'function') await loadCategoriesData();
+                if (typeof loadBrandsData === 'function') await loadBrandsData();
+                if (typeof loadAlerts === 'function') await loadAlerts();
+                if (typeof loadAlertTriggers === 'function') await loadAlertTriggers();
+                if (typeof setDefaultDates === 'function') setDefaultDates();
+                
+                updateUserInterface();
+                console.log('✅ İlk kurulum tamamlandı ve uygulama başlatıldı');
+                
+            }, 2000);
+            
+        } else {
+            showMessage(result.error || 'Kayıt sırasında bir hata oluştu!', 'error');
+        }
+        
+    } catch (error) {
+        console.error('İlk kurulum hatası:', error);
+        showMessage('Kayıt sırasında bir hata oluştu!', 'error');
+    } finally {
+        // Loading state'i kaldır
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('loading');
+    }
+}
+
+// Dinamik login işlemi
+async function handleDynamicLogin(event) {
     event.preventDefault();
     const formData = new FormData(event.target);
     
@@ -8235,7 +8478,7 @@ async function handleLogin(event) {
             }
             
             // Modal'ı kapat
-            const loginModal = document.getElementById('login-modal');
+            const loginModal = document.getElementById('dynamic-login-modal');
             if (loginModal) {
                 loginModal.remove();
             }
@@ -8243,22 +8486,129 @@ async function handleLogin(event) {
             // Arka planı tekrar göster
             const appContainer = document.querySelector('.app-container');
             if (appContainer) {
-                appContainer.style.display = 'block';
+                appContainer.style.display = 'flex';
             }
             
             // UI'yi güncelle
-            updateUserInterface();
-            updateUIForUserRole();
+            console.log('🔄 UI güncelleniyor...');
+            try {
+                updateUserInterface();
+                console.log('✅ updateUserInterface tamamlandı');
+            } catch (error) {
+                console.error('❌ updateUserInterface hatası:', error);
+            }
             
-            showNotification('Giriş başarılı! Hoş geldiniz ' + result.user.fullName, 'success');
+            try {
+                updateUIForUserRole();
+                console.log('✅ updateUIForUserRole tamamlandı');
+            } catch (error) {
+                console.error('❌ updateUIForUserRole hatası:', error);
+            }
+            
+            // Uygulama verilerini yükle
+            console.log('🔄 Uygulama verileri yükleniyor...');
+            try {
+                await loadCustomers();
+                console.log('✅ Müşteri verileri yüklendi');
+            } catch (error) {
+                console.error('❌ Veri yükleme hatası:', error);
+                console.error('❌ Hata detayları:', error.message);
+                console.error('❌ Hata stack:', error.stack);
+                showMessage('Veri yükleme sırasında hata oluştu: ' + error.message, 'error');
+            }
+            
+            showMessage('Giriş başarılı! Hoş geldiniz ' + result.user.fullName, 'success');
+            console.log('✅ Giriş işlemi tamamlandı');
             
         } else {
-            showNotification(result.error || 'Giriş başarısız', 'error');
+            showMessage(result.error || 'Giriş başarısız', 'error');
         }
         
     } catch (error) {
         console.error('Login error:', error);
-        showNotification('Giriş sırasında hata oluştu', 'error');
+        showMessage('Giriş sırasında hata oluştu', 'error');
+    }
+}
+
+// Login işlemi
+async function handleLogin(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    
+    const credentials = {
+        username: formData.get('email'), // HTML'de name="email" olarak tanımlı ama username için kullanılıyor
+        password: formData.get('password'),
+        rememberMe: formData.get('rememberMe') === 'on'
+    };
+    
+    try {
+        const result = await window.electronAPI.loginUser(credentials);
+        
+        if (result.success) {
+            // Session bilgilerini kaydet
+            window.currentUser = result.user;
+            window.sessionToken = result.sessionToken;
+            window.isLoggedIn = true;
+            
+            // LocalStorage'a kaydet
+            if (credentials.rememberMe) {
+                localStorage.setItem('sessionToken', result.sessionToken);
+                localStorage.setItem('userData', JSON.stringify(result.user));
+            }
+            
+            // Modal'ı kapat
+            const loginModal = document.getElementById('login-modal');
+            if (loginModal) {
+                loginModal.classList.remove('active');
+                loginModal.style.display = 'none';
+                loginModal.style.visibility = 'hidden';
+                loginModal.style.opacity = '0';
+            }
+            
+            // Arka planı tekrar göster
+            const appContainer = document.querySelector('.app-container');
+            if (appContainer) {
+                appContainer.style.display = 'flex';
+            }
+            
+            // UI'yi güncelle
+            console.log('🔄 UI güncelleniyor...');
+            try {
+                updateUserInterface();
+                console.log('✅ updateUserInterface tamamlandı');
+            } catch (error) {
+                console.error('❌ updateUserInterface hatası:', error);
+            }
+            
+            try {
+                updateUIForUserRole();
+                console.log('✅ updateUIForUserRole tamamlandı');
+            } catch (error) {
+                console.error('❌ updateUIForUserRole hatası:', error);
+            }
+            
+            // Uygulama verilerini yükle
+            console.log('🔄 Uygulama verileri yükleniyor...');
+            try {
+                await loadCustomers();
+                console.log('✅ Müşteri verileri yüklendi');
+            } catch (error) {
+                console.error('❌ Veri yükleme hatası:', error);
+                console.error('❌ Hata detayları:', error.message);
+                console.error('❌ Hata stack:', error.stack);
+                showMessage('Veri yükleme sırasında hata oluştu: ' + error.message, 'error');
+            }
+            
+            showMessage('Giriş başarılı! Hoş geldiniz ' + result.user.fullName, 'success');
+            console.log('✅ Giriş işlemi tamamlandı');
+            
+        } else {
+            showMessage(result.error || 'Giriş başarısız', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Login error:', error);
+        showMessage('Giriş sırasında hata oluştu', 'error');
     }
 }
 
@@ -8277,12 +8627,12 @@ async function handleRegister(event) {
     
     // Şifre kontrolü
     if (userData.password !== userData.confirmPassword) {
-        showNotification('Şifreler eşleşmiyor', 'error');
+        showMessage('Şifreler eşleşmiyor', 'error');
         return;
     }
     
     if (userData.password.length < 6) {
-        showNotification('Şifre en az 6 karakter olmalıdır', 'error');
+        showMessage('Şifre en az 6 karakter olmalıdır', 'error');
         return;
     }
     
@@ -8290,7 +8640,7 @@ async function handleRegister(event) {
         const result = await window.electronAPI.registerUser(userData);
         
         if (result.success) {
-            showNotification('Kayıt başarılı! Şimdi giriş yapabilirsiniz', 'success');
+            showMessage('Kayıt başarılı! Şimdi giriş yapabilirsiniz', 'success');
             
             // Register modalını kapat ve login modalını göster
             const registerModal = document.getElementById('register-modal');
@@ -8300,12 +8650,12 @@ async function handleRegister(event) {
             showLoginModal();
             
         } else {
-            showNotification(result.error || 'Kayıt başarısız', 'error');
+            showMessage(result.error || 'Kayıt başarısız', 'error');
         }
         
     } catch (error) {
         console.error('Register error:', error);
-        showNotification('Kayıt sırasında hata oluştu', 'error');
+        showMessage('Kayıt sırasında hata oluştu', 'error');
     }
 }
 
@@ -8332,18 +8682,18 @@ async function handleLogout() {
         // Login modalını göster
         showLoginModal();
         
-        showNotification('Çıkış yapıldı', 'success');
+        showMessage('Çıkış yapıldı', 'success');
         
     } catch (error) {
         console.error('Logout error:', error);
-        showNotification('Çıkış sırasında hata oluştu', 'error');
+        showMessage('Çıkış sırasında hata oluştu', 'error');
     }
 }
 
 // Kullanıcı arayüzünü güncelle
 function updateUserInterface() {
     // Kullanıcı bilgilerini header'a ekle
-    const header = document.querySelector('.header');
+    const header = document.querySelector('.app-header');
     if (header && window.isLoggedIn && window.currentUser) {
         // Mevcut kullanıcı bilgisi varsa kaldır
         const existingUserInfo = header.querySelector('.user-info');
@@ -8372,7 +8722,7 @@ function updateUserInterface() {
 function showAddUserModal() {
     // Admin kontrolü
     if (!window.currentUser || window.currentUser.role !== 'admin') {
-        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        showMessage('Bu işlem için admin yetkisi gereklidir', 'error');
         return;
     }
     
@@ -8448,7 +8798,7 @@ async function handleAddUser(event) {
     
     // Admin kontrolü
     if (!window.currentUser || window.currentUser.role !== 'admin') {
-        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        showMessage('Bu işlem için admin yetkisi gereklidir', 'error');
         return;
     }
     
@@ -8466,15 +8816,15 @@ async function handleAddUser(event) {
         const result = await window.electronAPI.registerUser(userData);
         
         if (result.success) {
-            showNotification('Kullanıcı başarıyla eklendi', 'success');
+            showMessage('Kullanıcı başarıyla eklendi', 'success');
             closeModal('add-user-modal');
             await loadUsersList(); // Kullanıcı listesini yenile
         } else {
-            showNotification(result.error || 'Kullanıcı eklenirken hata oluştu', 'error');
+            showMessage(result.error || 'Kullanıcı eklenirken hata oluştu', 'error');
         }
     } catch (error) {
         console.error('Add user error:', error);
-        showNotification('Kullanıcı eklenirken hata oluştu', 'error');
+        showMessage('Kullanıcı eklenirken hata oluştu', 'error');
     }
 }
 
@@ -8538,7 +8888,7 @@ async function loadUsersList() {
 function openEditUserModal(userId, fullName, email, role) {
     // Admin kontrolü
     if (!window.currentUser || window.currentUser.role !== 'admin') {
-        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        showMessage('Bu işlem için admin yetkisi gereklidir', 'error');
         return;
     }
     
@@ -8583,7 +8933,7 @@ async function submitEditUser(e) {
     
     // Admin kontrolü
     if (!window.currentUser || window.currentUser.role !== 'admin') {
-        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        showMessage('Bu işlem için admin yetkisi gereklidir', 'error');
         return;
     }
     
@@ -8593,13 +8943,13 @@ async function submitEditUser(e) {
         if (!res.success) throw new Error(res.error||'Güncelleme başarısız');
         closeModal('edit-user-modal');
         loadUsersList();
-        showNotification('Kullanıcı güncellendi','success');
-    } catch(err){ showNotification('Hata: '+err.message,'error'); }
+        showMessage('Kullanıcı güncellendi','success');
+    } catch(err){ showMessage('Hata: '+err.message,'error'); }
 }
 async function toggleUserActive(userId, active) {
     // Admin kontrolü
     if (!window.currentUser || window.currentUser.role !== 'admin') {
-        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        showMessage('Bu işlem için admin yetkisi gereklidir', 'error');
         return;
     }
     
@@ -8607,14 +8957,14 @@ async function toggleUserActive(userId, active) {
         const res = await window.ipcRenderer.invoke('set-user-active', { userId, isActive: active });
         if (!res.success) throw new Error(res.error || 'İşlem başarısız');
         loadUsersList();
-        showNotification('Kullanıcı durumu güncellendi', 'success');
-    } catch (e) { showNotification('Hata: ' + e.message, 'error'); }
+        showMessage('Kullanıcı durumu güncellendi', 'success');
+    } catch (e) { showMessage('Hata: ' + e.message, 'error'); }
 }
 
 async function deleteUser(userId) {
     // Admin kontrolü
     if (!window.currentUser || window.currentUser.role !== 'admin') {
-        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        showMessage('Bu işlem için admin yetkisi gereklidir', 'error');
         return;
     }
     
@@ -8623,14 +8973,14 @@ async function deleteUser(userId) {
         const res = await window.ipcRenderer.invoke('delete-user', userId);
         if (!res.success) throw new Error(res.error || 'Silme başarısız');
         loadUsersList();
-        showNotification('Kullanıcı silindi', 'success');
-    } catch (e) { showNotification('Hata: ' + e.message, 'error'); }
+        showMessage('Kullanıcı silindi', 'success');
+    } catch (e) { showMessage('Hata: ' + e.message, 'error'); }
 }
 
 function openResetPasswordModal(userId) {
     // Admin kontrolü
     if (!window.currentUser || window.currentUser.role !== 'admin') {
-        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        showMessage('Bu işlem için admin yetkisi gereklidir', 'error');
         return;
     }
     
@@ -8668,21 +9018,21 @@ async function submitResetPassword(e) {
     
     // Admin kontrolü
     if (!window.currentUser || window.currentUser.role !== 'admin') {
-        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
+        showMessage('Bu işlem için admin yetkisi gereklidir', 'error');
         return;
     }
     
     const data = Object.fromEntries(new FormData(e.target).entries());
     if (!data.password || data.password.length < 6 || data.password !== data.password2) {
-        showNotification('Şifre en az 6 karakter olmalı ve eşleşmeli', 'warning');
+        showMessage('Şifre en az 6 karakter olmalı ve eşleşmeli', 'warning');
         return;
     }
     try {
         const res = await window.ipcRenderer.invoke('reset-user-password', { userId: parseInt(data.id), newPassword: data.password });
         if (!res.success) throw new Error(res.error || 'Şifre sıfırlanamadı');
         closeModal('reset-password-modal');
-        showNotification('Şifre sıfırlandı', 'success');
-    } catch (e) { showNotification('Hata: ' + e.message, 'error'); }
+        showMessage('Şifre sıfırlandı', 'success');
+    } catch (e) { showMessage('Hata: ' + e.message, 'error'); }
 }
 // ==================== GITHUB GÜNCELLEME FONKSİYONLARI ====================
 
@@ -8736,8 +9086,8 @@ async function downloadUpdate(downloadUrls) {
         const directUrl = btn ? btn.getAttribute('data-download-url') : null;
         if (!downloadUrls && directUrl) {
             const res = await window.electronAPI.downloadUpdate(directUrl);
-            if (res && res.success) showNotification('İndirme sayfası açıldı', 'success');
-            else showNotification('İndirme başlatılamadı', 'error');
+            if (res && res.success) showMessage('İndirme sayfası açıldı', 'success');
+            else showMessage('İndirme başlatılamadı', 'error');
             return;
         }
 
@@ -8753,14 +9103,783 @@ async function downloadUpdate(downloadUrls) {
         if (isLinux && urls.linux) chosen = urls.linux;
         if (!chosen && urls.fallback) chosen = urls.fallback;
         if (!chosen) {
-            showNotification('Bu sürüm için indirme dosyası bulunamadı', 'error');
+            showMessage('Bu sürüm için indirme dosyası bulunamadı', 'error');
             return;
         }
         const result = await window.electronAPI.downloadUpdate(chosen);
-        if (result && result.success) showNotification('İndirme sayfası açıldı', 'success');
-        else showNotification('İndirme başlatılamadı', 'error');
+        if (result && result.success) showMessage('İndirme sayfası açıldı', 'success');
+        else showMessage('İndirme başlatılamadı', 'error');
     } catch (error) {
         console.error('Download update error:', error);
-        showNotification('İndirme sırasında hata oluştu', 'error');
+        showMessage('İndirme sırasında hata oluştu', 'error');
     }
 }
+
+// 🚀 MODERN ÜRÜN MODÜLÜ ENTEGRASYONU
+// Bu fonksiyonlar yeni product-module.js ile entegre edilmiştir
+
+// Ürün ekleme modalını göster
+function showAddProductModal() {
+    if (typeof window.showAddProductModalFromRenderer === 'function') {
+        window.showAddProductModalFromRenderer();
+    } else {
+        // Fallback: Eski modal göster
+        showAddProductModalLegacy();
+    }
+}
+
+// Eski ürün ekleme modalı (fallback)
+function showAddProductModalLegacy() {
+    const modalHtml = `
+        <div id="add-product-modal" class="modal active" style="z-index: 9999;">
+            <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px 12px 0 0; color: white;">
+                    <h3 style="margin: 0; font-size: 20px; font-weight: 600;">Yeni Ürün Ekle</h3>
+                </div>
+                
+                <form id="new-add-product-form" onsubmit="handleAddProductLegacy(event)" style="padding: 24px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Ürün Adı *</label>
+                            <input type="text" id="product-name" name="name" required 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Ürün Kodu</label>
+                            <input type="text" id="product-code" name="code" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Barkod</label>
+                            <input type="text" id="product-barcode" name="barcode" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Birim</label>
+                            <select id="product-unit" name="unit" 
+                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;">
+                                <option value="adet">Adet</option>
+                                <option value="kg">Kilogram</option>
+                                <option value="lt">Litre</option>
+                                <option value="m">Metre</option>
+                                <option value="m2">Metrekare</option>
+                                <option value="m3">Metreküp</option>
+                                <option value="paket">Paket</option>
+                                <option value="kutu">Kutu</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Kategori</label>
+                            <div style="display: flex; gap: 8px;">
+                                <select id="product-category" name="category_id" 
+                                        style="flex: 1; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;">
+                                    <option value="">Kategori Seçin</option>
+                                    ${window.categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('')}
+                                </select>
+                                <button type="button" onclick="showAddCategoryModal()" 
+                                        style="background: #667eea; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 16px; transition: all 0.2s;"
+                                        onmouseover="this.style.background='#5a67d8'" onmouseout="this.style.background='#667eea'"
+                                        title="Hızlı Kategori Ekle">
+                                    ➕
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Marka</label>
+                            <div style="display: flex; gap: 8px;">
+                                <select id="product-brand" name="brand_id" 
+                                        style="flex: 1; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;">
+                                    <option value="">Marka Seçin</option>
+                                    ${window.brands.map(brand => `<option value="${brand.id}">${brand.name}</option>`).join('')}
+                                </select>
+                                <button type="button" onclick="showAddBrandModal()" 
+                                        style="background: #667eea; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 16px; transition: all 0.2s;"
+                                        onmouseover="this.style.background='#5a67d8'" onmouseout="this.style.background='#667eea'"
+                                        title="Hızlı Marka Ekle">
+                                    ➕
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Stok</label>
+                            <input type="number" id="product-stock" name="stock" value="0" min="0" step="0.01" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Alış Fiyatı (₺)</label>
+                            <input type="number" id="product-purchase-price" name="purchase_price" value="0" min="0" step="0.01" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Satış Fiyatı (₺) *</label>
+                            <input type="number" id="product-sale-price" name="sale_price" value="0" min="0.01" step="0.01" required 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">KDV Oranı (%)</label>
+                            <select id="product-vat-rate" name="vat_rate" 
+                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;"
+                                    onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                                <option value="0">%0</option>
+                                <option value="1">%1</option>
+                                <option value="8">%8</option>
+                                <option value="18">%18</option>
+                                <option value="20" selected>%20 (Standart)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Minimum Stok</label>
+                            <input type="number" id="product-min-stock" name="min_stock" value="0" min="0" step="0.01" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Açıklama</label>
+                        <textarea id="product-description" name="description" rows="3" 
+                                  style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; resize: vertical;"
+                                  onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'"></textarea>
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                        <button type="button" onclick="event.stopPropagation(); closeProductModal('add-product-modal')" 
+                                style="padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                            İptal
+                        </button>
+                        <button type="submit" 
+                                style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                            Ürün Ekle
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    document.getElementById('product-name').focus();
+}
+
+// Eski ürün ekleme handler (fallback)
+async function handleAddProductLegacy(event) {
+    event.preventDefault();
+    
+    const formData = new FormData(event.target);
+    const productData = {
+        name: formData.get('name').trim(),
+        code: formData.get('code') || null,
+        barcode: formData.get('barcode') || null,
+        unit: formData.get('unit') || 'adet',
+        category_id: formData.get('category_id') || null,
+        brand_id: formData.get('brand_id') || null,
+        stock: parseFloat(formData.get('stock')) || 0,
+        purchase_price: parseFloat(formData.get('purchase_price')) || 0,
+        sale_price: parseFloat(formData.get('sale_price')) || 0,
+        description: formData.get('description') || null
+    };
+    
+    // Validasyon
+    if (!productData.name) {
+        showMessage('Ürün adı zorunludur', 'error');
+        return;
+    }
+    
+    if (productData.sale_price <= 0) {
+        showMessage('Satış fiyatı 0\'dan büyük olmalıdır', 'error');
+        return;
+    }
+    
+    try {
+        const newProduct = await ipcRenderer.invoke('add-product', productData);
+        window.products.push(newProduct); // Global referansı güncelle
+        
+        // Form'u reset et
+        event.target.reset();
+        
+        showMessage('Ürün başarıyla eklendi', 'success');
+        
+        // Modal'ı kapat
+        setTimeout(() => {
+            closeProductModal('add-product-modal');
+        }, 100);
+        
+        // Satış ekranındaki ürün seçimini güncelle
+        if (typeof updateSaleProductSelect === 'function') {
+            updateSaleProductSelect(newProduct);
+        }
+        
+    } catch (error) {
+        console.error('Ürün eklenirken hata:', error);
+        showMessage('Ürün eklenirken hata oluştu', 'error');
+    }
+}
+
+// Kategori modülü
+function showCategoriesModule() {
+    if (typeof window.showCategoriesModalFromRenderer === 'function') {
+        window.showCategoriesModalFromRenderer();
+    } else {
+        showMessage('Kategori modülü henüz aktif değil', 'warning');
+    }
+}
+
+// Marka modülü
+function showBrandsModule() {
+    if (typeof window.showBrandsModalFromRenderer === 'function') {
+        window.showBrandsModalFromRenderer();
+    } else {
+        showMessage('Marka modülü henüz aktif değil', 'warning');
+    }
+}
+
+// Hızlı ürün ekleme
+function showQuickAddProduct() {
+    showAddProductModal();
+}
+
+// Ürün düzenleme
+function editProduct(id) {
+    if (typeof window.editProductFromRenderer === 'function') {
+        window.editProductFromRenderer(id);
+    } else {
+        showMessage('Ürün düzenleme modülü henüz aktif değil', 'warning');
+    }
+}
+
+// Ürün silme
+function deleteProduct(id) {
+    if (typeof window.deleteProductFromRenderer === 'function') {
+        window.deleteProductFromRenderer(id);
+    } else {
+        // Fallback: Basit silme
+        if (confirm('Bu ürünü silmek istediğinizden emin misiniz?')) {
+            deleteProductLegacy(id);
+        }
+    }
+}
+
+// Eski ürün silme (fallback)
+async function deleteProductLegacy(id) {
+    try {
+        await ipcRenderer.invoke('delete-product', id);
+        
+        // Ürünü listeden kaldır
+        const index = products.findIndex(p => p.id === id);
+        if (index > -1) {
+            products.splice(index, 1);
+        }
+        
+        showMessage('Ürün başarıyla silindi', 'success');
+        
+        // Satış ekranını güncelle
+        if (typeof updateSaleProductSelectAfterDelete === 'function') {
+            updateSaleProductSelectAfterDelete(id);
+        }
+        
+        // Ürün yönetim modülünde liste görünümü açıksa yenile
+        if (typeof window.refreshProductList === 'function') {
+            console.log('🔄 Ürün silindi, liste yenileniyor...');
+            await window.refreshProductList();
+        }
+        
+    } catch (error) {
+        console.error('Ürün silinemedi:', error);
+        showMessage('Ürün silinemedi', 'error');
+    }
+}
+
+// Excel aktarma
+function exportProductsToExcel() {
+    if (typeof window.exportProductsToExcel === 'function') {
+        window.exportProductsToExcel();
+    } else {
+        showMessage('Excel aktarma modülü henüz aktif değil', 'warning');
+    }
+}
+
+// Yazdırma
+function printProducts() {
+    showMessage('Yazdırma modülü henüz aktif değil', 'warning');
+}
+
+// 🎯 YENİ MODÜL ENTEGRASYON FONKSİYONLARI
+// Bu fonksiyonlar product-module.js tarafından çağrılır
+
+// Ürün ekleme modalını renderer'dan çağır
+window.showAddProductModalFromRenderer = showAddProductModalLegacy;
+
+// Hızlı kategori ekleme fonksiyonu
+window.showAddCategoryModal = function() {
+    if (typeof window.showAddCategoryModalFromProductModule === 'function') {
+        window.showAddCategoryModalFromProductModule();
+    } else {
+        showMessage('Kategori ekleme modülü henüz aktif değil', 'warning');
+    }
+};
+
+// Hızlı marka ekleme fonksiyonu
+window.showAddBrandModal = function() {
+    if (typeof window.showAddBrandModalFromProductModule === 'function') {
+        window.showAddBrandModalFromProductModule();
+    } else {
+        showMessage('Marka ekleme modülü henüz aktif değil', 'warning');
+    }
+};
+
+// Ürün düzenleme modalını renderer'dan çağır
+window.editProductFromRenderer = function(id) {
+    const product = window.products.find(p => p.id === id);
+    if (!product) {
+        showMessage('Ürün bulunamadı', 'error');
+        return;
+    }
+    
+    const modalHtml = `
+        <div id="edit-product-modal" class="modal active" style="z-index: 9999;">
+            <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px 12px 0 0; color: white;">
+                    <h3 style="margin: 0; font-size: 20px; font-weight: 600;">Ürün Düzenle</h3>
+                </div>
+                
+                <form id="edit-product-form" onsubmit="handleEditProductLegacy(event, ${id})" style="padding: 24px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Ürün Adı *</label>
+                            <input type="text" id="edit-product-name" name="name" value="${product.name}" required 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Ürün Kodu</label>
+                            <input type="text" id="edit-product-code" name="code" value="${product.code || ''}" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Barkod</label>
+                            <input type="text" id="edit-product-barcode" name="barcode" value="${product.barcode || ''}" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Birim</label>
+                            <select id="edit-product-unit" name="unit" 
+                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;">
+                                <option value="adet" ${product.unit === 'adet' ? 'selected' : ''}>Adet</option>
+                                <option value="kg" ${product.unit === 'kg' ? 'selected' : ''}>Kilogram</option>
+                                <option value="lt" ${product.unit === 'lt' ? 'selected' : ''}>Litre</option>
+                                <option value="m" ${product.unit === 'm' ? 'selected' : ''}>Metre</option>
+                                <option value="m2" ${product.unit === 'm2' ? 'selected' : ''}>Metrekare</option>
+                                <option value="m3" ${product.unit === 'm3' ? 'selected' : ''}>Metreküp</option>
+                                <option value="paket" ${product.unit === 'paket' ? 'selected' : ''}>Paket</option>
+                                <option value="kutu" ${product.unit === 'kutu' ? 'selected' : ''}>Kutu</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Kategori</label>
+                            <div style="display: flex; gap: 8px;">
+                                <select id="edit-product-category" name="category_id" 
+                                        style="flex: 1; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;">
+                                    <option value="">Kategori Seçin</option>
+                                    ${window.categories.map(cat => `<option value="${cat.id}" ${product.category_id === cat.id ? 'selected' : ''}>${cat.name}</option>`).join('')}
+                                </select>
+                                <button type="button" onclick="showAddCategoryModal()" 
+                                        style="background: #667eea; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 16px; transition: all 0.2s;"
+                                        onmouseover="this.style.background='#5a67d8'" onmouseout="this.style.background='#667eea'"
+                                        title="Hızlı Kategori Ekle">
+                                    ➕
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Marka</label>
+                            <div style="display: flex; gap: 8px;">
+                                <select id="edit-product-brand" name="brand_id" 
+                                        style="flex: 1; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;">
+                                    <option value="">Marka Seçin</option>
+                                    ${window.brands.map(brand => `<option value="${brand.id}" ${product.brand_id === brand.id ? 'selected' : ''}>${brand.name}</option>`).join('')}
+                                </select>
+                                <button type="button" onclick="showAddBrandModal()" 
+                                        style="background: #667eea; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 16px; transition: all 0.2s;"
+                                        onmouseover="this.style.background='#5a67d8'" onmouseout="this.style.background='#667eea'"
+                                        title="Hızlı Marka Ekle">
+                                    ➕
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Stok</label>
+                            <input type="number" id="edit-product-stock" name="stock" value="${product.stock || 0}" min="0" step="0.01" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Alış Fiyatı (₺)</label>
+                            <input type="number" id="edit-product-purchase-price" name="purchase_price" value="${product.purchase_price || 0}" min="0" step="0.01" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Satış Fiyatı (₺) *</label>
+                            <input type="number" id="edit-product-sale-price" name="sale_price" value="${product.sale_price || 0}" min="0.01" step="0.01" required 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">KDV Oranı (%)</label>
+                            <select id="edit-product-vat-rate" name="vat_rate" 
+                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;"
+                                    onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                                <option value="0" ${product.vat_rate === 0 ? 'selected' : ''}>%0</option>
+                                <option value="1" ${product.vat_rate === 1 ? 'selected' : ''}>%1</option>
+                                <option value="8" ${product.vat_rate === 8 ? 'selected' : ''}>%8</option>
+                                <option value="18" ${product.vat_rate === 18 ? 'selected' : ''}>%18</option>
+                                <option value="20" ${product.vat_rate === 20 ? 'selected' : ''}>%20 (Standart)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Minimum Stok</label>
+                            <input type="number" id="edit-product-min-stock" name="min_stock" value="${product.min_stock || 0}" min="0" step="0.01" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
+                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Açıklama</label>
+                        <textarea id="edit-product-description" name="description" rows="3" 
+                                  style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; resize: vertical;"
+                                  onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">${product.description || ''}</textarea>
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                        <button type="button" onclick="closeProductModal('edit-product-modal')" 
+                                style="padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                            İptal
+                        </button>
+                        <button type="submit" 
+                                style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                            Güncelle
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    document.getElementById('edit-product-name').focus();
+}
+
+// Eski ürün düzenleme handler (fallback)
+async function handleEditProductLegacy(event, id) {
+    event.preventDefault();
+    
+    const formData = new FormData(event.target);
+    const productData = {
+        name: formData.get('name').trim(),
+        code: formData.get('code') || null,
+        barcode: formData.get('barcode') || null,
+        unit: formData.get('unit') || 'adet',
+        category_id: formData.get('category_id') || null,
+        brand_id: formData.get('brand_id') || null,
+        stock: parseFloat(formData.get('stock')) || 0,
+        purchase_price: parseFloat(formData.get('purchase_price')) || 0,
+        sale_price: parseFloat(formData.get('sale_price')) || 0,
+        description: formData.get('description') || null
+    };
+    
+    // Validasyon
+    if (!productData.name) {
+        showMessage('Ürün adı zorunludur', 'error');
+        return;
+    }
+    
+    if (productData.sale_price <= 0) {
+        showMessage('Satış fiyatı 0\'dan büyük olmalıdır', 'error');
+        return;
+    }
+    
+    try {
+        await ipcRenderer.invoke('update-product', { id, ...productData });
+        
+        // Veritabanından taze veri çek
+        window.products = await ipcRenderer.invoke('get-products');
+        
+        showMessage('Ürün başarıyla güncellendi', 'success');
+        
+        // Modal'ı kapat
+        setTimeout(() => {
+            closeProductModal('edit-product-modal');
+        }, 100);
+        
+        // Satış ekranını güncelle
+        if (typeof updateSaleProductSelect === 'function') {
+            updateSaleProductSelect();
+        }
+        
+    } catch (error) {
+        console.error('Ürün güncellenirken hata:', error);
+        showMessage('Ürün güncellenirken hata oluştu', 'error');
+    }
+}
+
+// Ürün silme modalını renderer'dan çağır
+window.deleteProductFromRenderer = function(id) {
+    const product = window.products.find(p => p.id === id);
+    if (!product) {
+        showMessage('Ürün bulunamadı', 'error');
+        return;
+    }
+    
+    if (confirm(`"${product.name}" ürününü silmek istediğinizden emin misiniz?`)) {
+        deleteProductLegacy(id);
+    }
+};
+
+// Kategori modülü modalını renderer'dan çağır
+window.showCategoriesModalFromRenderer = function() {
+    const modalHtml = `
+        <div id="categories-modal" class="modal active" style="z-index: 9998;">
+            <div class="modal-content" style="max-width: 600px; border-radius: 12px;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px 12px 0 0; color: white;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin: 0; font-size: 20px; font-weight: 600;">Kategori Yönetimi</h3>
+                        <button onclick="event.stopPropagation(); closeProductModal('categories-modal')" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 18px; z-index: 9999; position: relative;" title="Kapat">×</button>
+                    </div>
+                </div>
+                
+                <div style="padding: 20px;">
+                    <button onclick="showAddCategoryModal()" class="btn btn-primary" style="margin-bottom: 20px;">+ Yeni Kategori Ekle</button>
+                    
+                    <div style="background: white; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead style="background: #f9fafb;">
+                                <tr>
+                                    <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">Kategori Adı</th>
+                                    <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151;">İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${window.categories.map(cat => `
+                                    <tr style="border-bottom: 1px solid #f3f4f6;">
+                                        <td style="padding: 12px; font-weight: 500;">${cat.name}</td>
+                                        <td style="padding: 12px; text-align: center;">
+                                            <button onclick="editCategory(${cat.id})" style="background: #f3f4f6; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Düzenle</button>
+                                            ${window.currentUser && window.currentUser.role === 'admin' ? 
+                                                '<button onclick="deleteCategory(' + cat.id + ')" style="background: #fef2f2; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; color: #dc2626;">Sil</button>' : 
+                                                ''
+                                            }
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        ${window.categories.length === 0 ? '<div style="text-align: center; padding: 40px; color: #9ca3af;">Henüz kategori eklenmemiş</div>' : ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+};
+
+// Marka modülü modalını renderer'dan çağır
+window.showBrandsModalFromRenderer = function() {
+    const modalHtml = `
+        <div id="brands-modal" class="modal active" style="z-index: 9998;">
+            <div class="modal-content" style="max-width: 600px; border-radius: 12px;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px 12px 0 0; color: white;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin: 0; font-size: 20px; font-weight: 600;">Marka Yönetimi</h3>
+                        <button onclick="event.stopPropagation(); closeProductModal('brands-modal')" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 18px; z-index: 9999; position: relative;" title="Kapat">×</button>
+                    </div>
+                </div>
+                
+                <div style="padding: 20px;">
+                    <button onclick="showAddBrandModal()" class="btn btn-primary" style="margin-bottom: 20px;">+ Yeni Marka Ekle</button>
+                    
+                    <div style="background: white; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead style="background: #f9fafb;">
+                                <tr>
+                                    <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">Marka Adı</th>
+                                    <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151;">İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${brands.map(brand => `
+                                    <tr style="border-bottom: 1px solid #f3f4f6;">
+                                        <td style="padding: 12px; font-weight: 500;">${brand.name}</td>
+                                        <td style="padding: 12px; text-align: center;">
+                                            <button onclick="editBrand(${brand.id})" style="background: #f3f4f6; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Düzenle</button>
+                                            ${window.currentUser && window.currentUser.role === 'admin' ? 
+                                                '<button onclick="deleteBrand(' + brand.id + ')" style="background: #fef2f2; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; color: #dc2626;">Sil</button>' : 
+                                                ''
+                                            }
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        ${window.brands.length === 0 ? '<div style="text-align: center; padding: 40px; color: #9ca3af;">Henüz marka eklenmemiş</div>' : ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+};
+
+// Toplu işlemler modalını renderer'dan çağır
+window.showBulkOperationsModalFromRenderer = function() {
+    showMessage('Toplu işlemler modülü henüz aktif değil', 'warning');
+};
+
+// Modal kapatma fonksiyonu
+function closeProductModal(modalId) {
+    try {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.remove();
+            console.log(`Modal ${modalId} closed and removed from DOM`);
+        } else {
+            console.warn(`Modal ${modalId} not found`);
+        }
+    } catch (error) {
+        console.error(`Error closing modal ${modalId}:`, error);
+    }
+}
+
+// Global fonksiyonları tanımla
+window.closeProductModal = closeProductModal;
+window.handleAddProductLegacy = handleAddProductLegacy;
+window.handleEditProductLegacy = handleEditProductLegacy;
+window.deleteProductLegacy = deleteProductLegacy;
+
+// Mesaj gösterme fonksiyonu
+function showMessage(message, type = 'info') {
+    // Mevcut mesajları temizle
+    const existingMessages = document.querySelectorAll('.message-toast');
+    existingMessages.forEach(msg => msg.remove());
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message-toast ${type}`;
+    messageDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        border-radius: 8px;
+        color: white;
+        font-weight: 500;
+        font-size: 14px;
+        z-index: 10000;
+        max-width: 400px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        animation: slideInRight 0.3s ease-out;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    `;
+    
+    // Tip'e göre stil
+    switch (type) {
+        case 'success':
+            messageDiv.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+            messageDiv.innerHTML = `<span style="font-size: 18px;">✅</span> ${message}`;
+            break;
+        case 'error':
+            messageDiv.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+            messageDiv.innerHTML = `<span style="font-size: 18px;">❌</span> ${message}`;
+            break;
+        case 'warning':
+            messageDiv.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+            messageDiv.innerHTML = `<span style="font-size: 18px;">⚠️</span> ${message}`;
+            break;
+        default:
+            messageDiv.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+            messageDiv.innerHTML = `<span style="font-size: 18px;">ℹ️</span> ${message}`;
+    }
+    
+    document.body.appendChild(messageDiv);
+    
+    // 5 saniye sonra otomatik kapat
+    setTimeout(() => {
+        if (messageDiv.parentNode) {
+            messageDiv.style.animation = 'slideOutRight 0.3s ease-in';
+            setTimeout(() => {
+                if (messageDiv.parentNode) {
+                    messageDiv.remove();
+                }
+            }, 300);
+        }
+    }, 5000);
+    
+    // CSS animasyonları ekle
+    if (!document.getElementById('message-toast-styles')) {
+        const style = document.createElement('style');
+        style.id = 'message-toast-styles';
+        style.textContent = `
+            @keyframes slideInRight {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+            
+            @keyframes slideOutRight {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+// Global fonksiyon olarak tanımla
+window.showMessage = showMessage;
+window.initializeUserSession = initializeUserSession;

@@ -1,7 +1,36 @@
-// Modern ve Sade Ürün Yönetimi Modülü
-// ipcRenderer, categories, brands, products zaten renderer.js'de tanımlı
+/**
+ * 🚀 MODERN ÜRÜN YÖNETİM MODÜLÜ v2.0
+ * 
+ * Yenilikçi özellikler:
+ * - Modern dashboard tasarımı
+ * - Akıllı kategoriler ve markalar
+ * - Excel import/export
+ * - Gelişmiş arama ve filtreleme
+ * - Stok takibi ve uyarılar
+ * - QR/Barkod desteği
+ * - Toplu işlemler
+ */
 
-// Ana ürün yönetimi modalını göster  
+// Global değişkenler
+let products = [];
+let categories = [];
+let brands = [];
+let currentView = 'dashboard'; // dashboard, list, grid
+let selectedProducts = new Set();
+let searchFilters = {
+    text: '',
+    category: '',
+    brand: '',
+    stockStatus: '',
+    priceRange: { min: '', max: '' }
+};
+
+// Global değişkenleri window objesine ata (renderer.js ile uyumluluk için)
+window.products = products;
+window.categories = categories;
+window.brands = brands;
+
+// 🎯 ANA MODAL AÇMA FONKSİYONU
 async function showProductManagement() {
     try {
         // Verileri yükle
@@ -25,199 +54,450 @@ async function showProductManagement() {
         // ESC tuşu ile kapatma
         document.addEventListener('keydown', handleProductModalKeydown);
         
+        // Dashboard'u göster
+        showDashboard();
+        
     } catch (error) {
         console.error('Ürün yönetimi açılırken hata:', error);
         showNotification('Ürün yönetimi açılırken hata oluştu', 'error');
     }
 }
 
-// Verileri yükle
-async function loadCategoriesData() {
-    try {
-        categories = await ipcRenderer.invoke('get-categories');
-    } catch (error) {
-        console.error('Kategoriler yüklenemedi:', error);
-        categories = [];
-    }
-}
+// 📊 VERİ YÜKLEME FONKSİYONLARI
+// Eski loadCategoriesData fonksiyonu kaldırıldı - yeni versiyon aşağıda
 
-async function loadBrandsData() {
-    try {
-        brands = await ipcRenderer.invoke('get-brands');
-    } catch (error) {
-        console.error('Markalar yüklenemedi:', error);
-        brands = [];
-    }
-}
+// Eski loadBrandsData fonksiyonu kaldırıldı - yeni versiyon aşağıda
 
-async function loadProductsData() {
-    try {
-        products = await ipcRenderer.invoke('get-products');
-    } catch (error) {
-        console.error('Ürünler yüklenemedi:', error);
-        products = [];
-    }
-}
+// Eski loadProductsData fonksiyonu kaldırıldı - yeni versiyon aşağıda
 
-// Modern modal HTML'i oluştur
+// 🎨 MODERN MODAL OLUŞTURMA
 function createModernProductModal() {
     return `
         <div id="product-management-modal" class="modal active" style="z-index: 9997;">
-            <div class="modal-content" style="max-width: 95%; max-height: 95vh; border-radius: 16px; overflow: hidden;">
+            <div class="modal-content" style="max-width: 98%; max-height: 98vh; border-radius: 20px; overflow: hidden; background: #ffffff; box-shadow: 0 25px 50px rgba(0,0,0,0.15);">
                 
-                <!-- Gradient Header -->
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px; color: white;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                <!-- Modern Header -->
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 32px; color: white; position: relative; overflow: hidden;">
+                    <div style="position: absolute; top: -50px; right: -50px; width: 200px; height: 200px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
+                    <div style="position: absolute; bottom: -30px; left: -30px; width: 150px; height: 150px; background: rgba(255,255,255,0.05); border-radius: 50%;"></div>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 2;">
                         <div>
-                            <h2 style="margin: 0; font-size: 28px; font-weight: 700;">Ürün Yönetimi</h2>
-                            <p style="margin: 8px 0 0 0; font-size: 14px; opacity: 0.95;">
+                            <h2 style="margin: 0; font-size: 32px; font-weight: 800; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">📦 Ürün Yönetimi</h2>
+                            <p style="margin: 8px 0 0 0; font-size: 16px; opacity: 0.95; font-weight: 500;">
                                 ${products.length} Ürün · ${categories.length} Kategori · ${brands.length} Marka
                             </p>
                         </div>
-                        <div style="display: flex; gap: 12px; align-items: center;">
+                        <div style="display: flex; gap: 16px; align-items: center;">
                             <button onclick="showExcelImportModal()" 
-                                    style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.3s; display: flex; align-items: center; gap: 8px;"
-                                    onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
-                                    onmouseout="this.style.background='rgba(255,255,255,0.2)'" title="Excel ile Toplu Ürün Yükle">
+                                    style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 12px 20px; border-radius: 12px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s; display: flex; align-items: center; gap: 8px; backdrop-filter: blur(10px);"
+                                    onmouseover="this.style.background='rgba(255,255,255,0.3)'; this.style.transform='translateY(-2px)'" 
+                                    onmouseout="this.style.background='rgba(255,255,255,0.2)'; this.style.transform='translateY(0)'" 
+                                    title="Excel ile Toplu Ürün Yükle">
                                 📊 Excel Import
                             </button>
+                            <button onclick="exportProductsToExcel()" 
+                                    style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 12px 20px; border-radius: 12px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s; display: flex; align-items: center; gap: 8px; backdrop-filter: blur(10px);"
+                                    onmouseover="this.style.background='rgba(255,255,255,0.3)'; this.style.transform='translateY(-2px)'" 
+                                    onmouseout="this.style.background='rgba(255,255,255,0.2)'; this.style.transform='translateY(0)'" 
+                                    title="Ürünleri Excel'e Aktar">
+                                📤 Excel Export
+                            </button>
                             <button onclick="event.stopPropagation(); closeProductModal('product-management-modal')" 
-                                    style="background: rgba(255,255,255,0.2); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 24px; transition: all 0.3s; z-index: 1001; position: relative;"
-                                    onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
-                                    onmouseout="this.style.background='rgba(255,255,255,0.2)'"
-                                title="Kapat">
-                            ×
+                                    style="background: rgba(255,255,255,0.2); border: none; color: white; width: 48px; height: 48px; border-radius: 50%; cursor: pointer; font-size: 24px; transition: all 0.3s; z-index: 1001; position: relative; backdrop-filter: blur(10px);"
+                                    onmouseover="this.style.background='rgba(255,255,255,0.3)'; this.style.transform='rotate(90deg)'" 
+                                    onmouseout="this.style.background='rgba(255,255,255,0.2)'; this.style.transform='rotate(0deg)'"
+                                    title="Kapat">
+                                ×
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Navigation Tabs -->
+                <div style="background: #f8fafc; padding: 0 32px; border-bottom: 1px solid #e2e8f0;">
+                    <div style="display: flex; gap: 0;">
+                        <button onclick="showDashboard()" id="tab-dashboard" 
+                                style="padding: 16px 24px; background: #667eea; color: white; border: none; border-radius: 12px 12px 0 0; cursor: pointer; font-weight: 600; transition: all 0.3s; margin-right: 4px;">
+                            📊 Dashboard
+                        </button>
+                        <button onclick="showListView()" id="tab-list" 
+                                style="padding: 16px 24px; background: transparent; color: #64748b; border: none; cursor: pointer; font-weight: 500; transition: all 0.3s;">
+                            📋 Liste Görünümü
                         </button>
                     </div>
                 </div>
                 
                 <!-- Content Area -->
-                <div style="padding: 24px; background: #f9fafb; height: calc(95vh - 100px); overflow-y: auto;">
-                    
-                    <!-- Quick Action Cards -->
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
-                        <div onclick="showProductModal()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; cursor: pointer; transition: transform 0.2s; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);" onmouseover="this.style.transform='translateY(-4px)'" onmouseout="this.style.transform='translateY(0)'">
-                            <div style="font-size: 32px; margin-bottom: 12px;">+</div>
-                            <div style="color: white; font-weight: 600; font-size: 16px;">Yeni Ürün Ekle</div>
-                        </div>
-                        
-                        <div onclick="showCategoriesModal()" style="background: white; border: 2px solid #e5e7eb; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#667eea'; this.style.boxShadow='0 4px 15px rgba(0,0,0,0.1)'" onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
-                            <div style="font-size: 32px; margin-bottom: 12px;">📁</div>
-                            <div style="font-weight: 600; font-size: 16px; color: #374151; margin-bottom: 4px;">Kategoriler</div>
-                            <div style="font-size: 13px; color: #9ca3af;">${categories.length} kategori</div>
-                        </div>
-                        
-                        <div onclick="showBrandsModal()" style="background: white; border: 2px solid #e5e7eb; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#667eea'; this.style.boxShadow='0 4px 15px rgba(0,0,0,0.1)'" onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
-                            <div style="font-size: 32px; margin-bottom: 12px;">🏷️</div>
-                            <div style="font-weight: 600; font-size: 16px; color: #374151; margin-bottom: 4px;">Markalar</div>
-                            <div style="font-size: 13px; color: #9ca3af;">${brands.length} marka</div>
-                        </div>
-                    </div>
-                    
-                    <!-- Search & Filter -->
-                    <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                        <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
-                            <input type="text" id="product-search-input" placeholder="🔍 Ürün ara..." 
-                                   style="flex: 1; min-width: 250px; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; transition: all 0.2s;"
-                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'"
-                                   onkeyup="filterProductsList()">
-                            <select id="category-filter-select" onchange="filterProductsList()" 
-                                    style="padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
-                                <option value="">Tüm Kategoriler</option>
-                                ${categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
-                            </select>
-                            <select id="brand-filter-select" onchange="filterProductsList()" 
-                                    style="padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
-                                <option value="">Tüm Markalar</option>
-                                ${brands.map(b => `<option value="${b.id}">${b.name}</option>`).join('')}
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <!-- Simple Products List -->
-                    <div id="products-list-container">
-                        ${createSimpleProductsList()}
-                    </div>
-                    
+                <div id="product-content-area" style="padding: 32px; background: #f8fafc; height: calc(98vh - 200px); overflow-y: auto;">
+                    <!-- Content will be dynamically loaded here -->
                 </div>
             </div>
         </div>
     `;
 }
 
-// Basit ürün listesi
-function createSimpleProductsList(productsToShow = null) {
-    const productsToDisplay = productsToShow || products;
-    console.log('createSimpleProductsList çağrıldı, products array:', productsToDisplay);
-    if (!productsToDisplay || productsToDisplay.length === 0) {
+// 📊 DASHBOARD GÖRÜNÜMÜ
+function showDashboard() {
+    currentView = 'dashboard';
+    updateTabStyles();
+    
+    const stats = calculateProductStats();
+    const lowStockProducts = products.filter(p => p.stock <= (p.min_stock || 5));
+    const recentProducts = products.slice(-5).reverse();
+    
+    const dashboardHtml = `
+        <div style="display: grid; gap: 24px;">
+            <!-- Stats Cards -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px; border-radius: 16px; color: white; box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">Toplam Ürün</div>
+                            <div style="font-size: 32px; font-weight: 800;">${stats.totalProducts}</div>
+                        </div>
+                        <div style="font-size: 48px; opacity: 0.3;">📦</div>
+                    </div>
+                </div>
+                
+                <div onclick="showBrandsModal()" 
+                     style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 24px; border-radius: 16px; color: white; box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3); cursor: pointer; transition: all 0.3s;"
+                     onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 12px 35px rgba(16, 185, 129, 0.4)'" 
+                     onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 25px rgba(16, 185, 129, 0.3)'">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">Markalar</div>
+                            <div style="font-size: 32px; font-weight: 800;">${stats.totalBrands}</div>
+                        </div>
+                        <div style="font-size: 48px; opacity: 0.3;">🏷️</div>
+                    </div>
+                </div>
+                
+                <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 24px; border-radius: 16px; color: white; box-shadow: 0 8px 25px rgba(245, 158, 11, 0.3);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">Düşük Stok</div>
+                            <div style="font-size: 32px; font-weight: 800;">${stats.lowStockCount}</div>
+                        </div>
+                        <div style="font-size: 48px; opacity: 0.3;">⚠️</div>
+                    </div>
+                </div>
+                
+                <div onclick="showCategoriesModal()" 
+                     style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 24px; border-radius: 16px; color: white; box-shadow: 0 8px 25px rgba(139, 92, 246, 0.3); cursor: pointer; transition: all 0.3s;"
+                     onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 12px 35px rgba(139, 92, 246, 0.4)'" 
+                     onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 25px rgba(139, 92, 246, 0.3)'">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">Kategoriler</div>
+                            <div style="font-size: 32px; font-weight: 800;">${stats.totalCategories}</div>
+                        </div>
+                        <div style="font-size: 48px; opacity: 0.3;">📁</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div style="background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+                <h3 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 700; color: #1e293b;">🚀 Hızlı İşlemler</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                    <button onclick="showAddProductModal()" 
+                            style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; border: none; color: white; font-weight: 600; display: flex; align-items: center; gap: 12px;"
+                            onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 8px 25px rgba(102, 126, 234, 0.4)'" 
+                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                        <span style="font-size: 24px;">➕</span>
+                        <span>Yeni Ürün Ekle</span>
+                    </button>
+                    
+                    <button onclick="showCategoriesModal()" 
+                            style="background: white; border: 2px solid #e5e7eb; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; color: #374151; font-weight: 600; display: flex; align-items: center; gap: 12px;"
+                            onmouseover="this.style.borderColor='#667eea'; this.style.boxShadow='0 8px 25px rgba(0,0,0,0.1)'" 
+                            onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+                        <span style="font-size: 24px;">📁</span>
+                        <span>Kategoriler</span>
+                    </button>
+                    
+                    <button onclick="showBrandsModal()" 
+                            style="background: white; border: 2px solid #e5e7eb; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; color: #374151; font-weight: 600; display: flex; align-items: center; gap: 12px;"
+                            onmouseover="this.style.borderColor='#667eea'; this.style.boxShadow='0 8px 25px rgba(0,0,0,0.1)'" 
+                            onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+                        <span style="font-size: 24px;">🏷️</span>
+                        <span>Markalar</span>
+                    </button>
+                    
+                    <button onclick="showBulkOperationsModal()" 
+                            style="background: white; border: 2px solid #e5e7eb; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; color: #374151; font-weight: 600; display: flex; align-items: center; gap: 12px;"
+                            onmouseover="this.style.borderColor='#667eea'; this.style.boxShadow='0 8px 25px rgba(0,0,0,0.1)'" 
+                            onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+                        <span style="font-size: 24px;">⚡</span>
+                        <span>Toplu İşlemler</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Low Stock Alert -->
+            ${lowStockProducts.length > 0 ? `
+                <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 20px; border-radius: 12px; border-left: 4px solid #f59e0b;">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                        <span style="font-size: 24px;">⚠️</span>
+                        <h4 style="margin: 0; font-size: 18px; font-weight: 700; color: #92400e;">Düşük Stok Uyarısı</h4>
+                    </div>
+                    <div style="display: grid; gap: 8px;">
+                        ${lowStockProducts.slice(0, 5).map(product => `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: rgba(255,255,255,0.7); border-radius: 8px;">
+                                <span style="font-weight: 500; color: #92400e;">${product.name}</span>
+                                <span style="font-weight: 700; color: #dc2626;">${product.stock} ${product.unit || 'adet'}</span>
+                            </div>
+                        `).join('')}
+                        ${lowStockProducts.length > 5 ? `
+                            <div style="text-align: center; margin-top: 8px;">
+                                <span style="font-size: 14px; color: #92400e;">ve ${lowStockProducts.length - 5} ürün daha...</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Recent Products -->
+            <div style="background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+                <h3 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 700; color: #1e293b;">🕒 Son Eklenen Ürünler</h3>
+                <div style="display: grid; gap: 12px;">
+                    ${recentProducts.map(product => {
+                        const category = categories.find(c => c.id === product.category_id);
+                        const brand = brands.find(b => b.id === product.brand_id);
+                        return `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+                                <div style="display: flex; align-items: center; gap: 16px;">
+                                    <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 18px;">
+                                        ${product.name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 600; color: #1e293b; margin-bottom: 4px;">${product.name}</div>
+                                        <div style="font-size: 14px; color: #64748b;">
+                                            ${category ? `<span style="background: #ede9fe; color: #7c3aed; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 8px;">${category.name}</span>` : ''}
+                                            ${brand ? `<span style="background: #dbeafe; color: #2563eb; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${brand.name}</span>` : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-weight: 700; color: #10b981; font-size: 16px;">₺${(product.sale_price || 0).toFixed(2)}</div>
+                                    <div style="font-size: 14px; color: #64748b;">Stok: ${product.stock || 0}</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('product-content-area').innerHTML = dashboardHtml;
+}
+
+// 📋 LİSTE GÖRÜNÜMÜ
+function showListView() {
+    currentView = 'list';
+    updateTabStyles();
+    
+    const listHtml = `
+        <div style="display: grid; gap: 24px;">
+            <!-- Search and Filters -->
+            <div style="background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 16px; align-items: end;">
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">🔍 Ürün Ara</label>
+                        <input type="text" id="product-search-input" placeholder="Ürün adı, kodu veya barkod..." 
+                               style="width: 100%; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 12px; font-size: 14px; outline: none; transition: all 0.2s;"
+                               onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'"
+                               onkeyup="filterProducts()">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">📁 Kategori</label>
+                        <select id="category-filter-select" onchange="filterProducts()" 
+                                style="width: 100%; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 12px; font-size: 14px; outline: none; background: white; cursor: pointer;">
+                            <option value="">Tüm Kategoriler</option>
+                            ${categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">🏷️ Marka</label>
+                        <select id="brand-filter-select" onchange="filterProducts()" 
+                                style="width: 100%; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 12px; font-size: 14px; outline: none; background: white; cursor: pointer;">
+                            <option value="">Tüm Markalar</option>
+                            ${brands.map(b => `<option value="${b.id}">${b.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">📊 Stok Durumu</label>
+                        <select id="stock-filter-select" onchange="filterProducts()" 
+                                style="width: 100%; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 12px; font-size: 14px; outline: none; background: white; cursor: pointer;">
+                            <option value="">Tümü</option>
+                            <option value="low">Düşük Stok</option>
+                            <option value="out">Stokta Yok</option>
+                            <option value="available">Stokta Var</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button onclick="clearFilters()" 
+                                style="padding: 12px 20px; background: #f3f4f6; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; color: #374151; transition: all 0.2s;"
+                                onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">
+                            🗑️ Temizle
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Products Table -->
+            <div style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+                <div id="products-table-container">
+                    ${createProductsTable()}
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('product-content-area').innerHTML = listHtml;
+}
+
+// 🎯 KART GÖRÜNÜMÜ
+// 📊 İSTATİSTİK HESAPLAMA
+function calculateProductStats() {
+    const totalProducts = products.length;
+    const totalCategories = categories.length;
+    const totalBrands = brands.length;
+    const lowStockCount = products.filter(p => p.stock <= (p.min_stock || 5)).length;
+    
+    return {
+        totalProducts,
+        totalCategories,
+        totalBrands,
+        lowStockCount
+    };
+}
+
+// 📋 ÜRÜN TABLOSU OLUŞTURMA
+function createProductsTable(filteredProducts = null) {
+    const productsToShow = filteredProducts || products;
+    
+    if (productsToShow.length === 0) {
         return `
-            <div style="text-align: center; padding: 60px 20px; background: white; border-radius: 12px;">
-                <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;">📦</div>
-                <h3 style="color: #6b7280; margin-bottom: 16px;">Henüz ürün yok</h3>
-                <button onclick="showProductModal()" class="btn btn-primary">İlk Ürünü Ekle</button>
+            <div style="text-align: center; padding: 60px 20px;">
+                <div style="font-size: 64px; margin-bottom: 24px; opacity: 0.3;">📦</div>
+                <h3 style="color: #6b7280; margin-bottom: 16px; font-size: 24px;">Henüz ürün yok</h3>
+                <p style="color: #9ca3af; margin-bottom: 24px;">İlk ürününüzü ekleyerek başlayın</p>
+                <button onclick="showAddProductModal()" 
+                        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 12px 24px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 16px;">
+                    ➕ İlk Ürünü Ekle
+                </button>
             </div>
         `;
     }
     
     return `
-        <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            <table style="width: 100%; border-collapse: collapse;">
-                <thead style="background: #f9fafb;">
-                    <tr>
-                        <th style="padding: 16px; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb;">Ürün Adı</th>
-                        <th style="padding: 16px; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb;">Kategori</th>
-                        <th style="padding: 16px; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb;">Marka</th>
-                        <th style="padding: 16px; text-align: right; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb;">Fiyat</th>
-                        <th style="padding: 16px; text-align: center; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb;">Stok</th>
-                        <th style="padding: 16px; text-align: center; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb;">İşlemler</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${productsToDisplay.map(product => createSimpleProductRow(product)).join('')}
-                </tbody>
-            </table>
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead style="background: #f8fafc;">
+                <tr>
+                    <th style="padding: 16px; text-align: left; font-weight: 700; color: #374151; border-bottom: 2px solid #e2e8f0;">
+                        <input type="checkbox" onchange="toggleSelectAll(this)" style="margin-right: 8px;">
+                        Ürün Bilgileri
+                    </th>
+                    <th style="padding: 16px; text-align: left; font-weight: 700; color: #374151; border-bottom: 2px solid #e2e8f0;">Kategori</th>
+                    <th style="padding: 16px; text-align: left; font-weight: 700; color: #374151; border-bottom: 2px solid #e2e8f0;">Marka</th>
+                    <th style="padding: 16px; text-align: right; font-weight: 700; color: #374151; border-bottom: 2px solid #e2e8f0;">Fiyat</th>
+                    <th style="padding: 16px; text-align: center; font-weight: 700; color: #374151; border-bottom: 2px solid #e2e8f0;">KDV</th>
+                    <th style="padding: 16px; text-align: center; font-weight: 700; color: #374151; border-bottom: 2px solid #e2e8f0;">Stok</th>
+                    <th style="padding: 16px; text-align: center; font-weight: 700; color: #374151; border-bottom: 2px solid #e2e8f0;">İşlemler</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${productsToShow.map(product => createProductTableRow(product)).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+// 🎯 ÜRÜN KARTLARI OLUŞTURMA
+function createProductsGrid(filteredProducts = null) {
+    const productsToShow = filteredProducts || products;
+    
+    if (productsToShow.length === 0) {
+        return `
+            <div style="text-align: center; padding: 60px 20px;">
+                <div style="font-size: 64px; margin-bottom: 24px; opacity: 0.3;">📦</div>
+                <h3 style="color: #6b7280; margin-bottom: 16px; font-size: 24px;">Henüz ürün yok</h3>
+                <p style="color: #9ca3af; margin-bottom: 24px;">İlk ürününüzü ekleyerek başlayın</p>
+                <button onclick="showAddProductModal()" 
+                        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 12px 24px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 16px;">
+                    ➕ İlk Ürünü Ekle
+                </button>
+            </div>
+        `;
+    }
+    
+    return `
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">
+            ${productsToShow.map(product => createProductCard(product)).join('')}
         </div>
     `;
 }
 
-// Basit ürün satırı
-function createSimpleProductRow(product) {
+// 📋 ÜRÜN TABLO SATIRI
+function createProductTableRow(product) {
     const category = categories.find(c => c.id === product.category_id);
     const brand = brands.find(b => b.id === product.brand_id);
-    const hasLowStock = product.stock <= (product.min_stock || 0);
+    const hasLowStock = product.stock <= (product.min_stock || 5);
+    const isOutOfStock = product.stock <= 0;
     
     return `
         <tr style="border-bottom: 1px solid #f3f4f6; transition: background 0.2s;" 
-            onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='white'">
+            onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
             <td style="padding: 16px;">
-                <div style="font-weight: 600; color: #111827; margin-bottom: 4px;">${product.name}</div>
-                <div style="font-size: 12px; color: #9ca3af;">${product.code || 'Kod yok'}</div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <input type="checkbox" value="${product.id}" onchange="toggleProductSelection(${product.id})" style="margin-right: 8px;">
+                    <div>
+                        <div style="font-weight: 700; color: #111827; margin-bottom: 4px; font-size: 16px;">${product.name}</div>
+                        <div style="font-size: 12px; color: #9ca3af;">
+                            ${product.code ? `Kod: ${product.code}` : ''}
+                            ${product.barcode ? ` | Barkod: ${product.barcode}` : ''}
+                        </div>
+                    </div>
+                </div>
             </td>
             <td style="padding: 16px;">
-                ${category ? `<span style="background: #ede9fe; color: #7c3aed; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500;">${category.name}</span>` : '<span style="color: #9ca3af; font-size: 12px;">-</span>'}
+                ${category ? `<span style="color: #7c3aed; font-size: 14px; font-weight: 500;">${category.name}</span>` : '<span style="color: #9ca3af; font-size: 14px;">-</span>'}
             </td>
             <td style="padding: 16px;">
-                ${brand ? `<span style="background: #dbeafe; color: #2563eb; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500;">${brand.name}</span>` : '<span style="color: #9ca3af; font-size: 12px;">-</span>'}
+                ${brand ? `<span style="color: #2563eb; font-size: 14px; font-weight: 500;">${brand.name}</span>` : '<span style="color: #9ca3af; font-size: 14px;">-</span>'}
             </td>
             <td style="padding: 16px; text-align: right;">
-                <div style="font-weight: 700; color: #10b981; font-size: 16px;">₺${(product.sale_price || 0).toFixed(2)}</div>
+                <div style="font-weight: 800; color: #10b981; font-size: 18px;">₺${(product.sale_price || 0).toFixed(2)}</div>
+                ${product.purchase_price ? `<div style="font-size: 12px; color: #9ca3af;">Alış: ₺${product.purchase_price.toFixed(2)}</div>` : ''}
             </td>
             <td style="padding: 16px; text-align: center;">
-                <div style="font-weight: 600; color: ${hasLowStock ? '#dc2626' : '#374151'}; display: flex; align-items: center; justify-content: center; gap: 4px;">
-                    ${hasLowStock ? '⚠️' : ''}
-                    <span>${product.stock || 0}</span>
+                <span style="background: #fef3c7; color: #d97706; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;">%${product.vat_rate || 20}</span>
+            </td>
+            <td style="padding: 16px; text-align: center;">
+                <div style="font-weight: 700; color: ${isOutOfStock ? '#dc2626' : hasLowStock ? '#f59e0b' : '#374151'}; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    ${isOutOfStock ? '❌' : hasLowStock ? '⚠️' : '✅'}
+                    <span style="font-size: 16px;">${product.stock || 0}</span>
                     <span style="font-size: 12px; color: #9ca3af;">${product.unit || 'adet'}</span>
                 </div>
             </td>
             <td style="padding: 16px; text-align: center;">
                 <div style="display: flex; gap: 8px; justify-content: center;">
                     <button onclick="editProduct(${product.id})" 
-                            style="background: #f3f4f6; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; color: #374151; transition: background 0.2s;"
-                            onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">
-                        Düzenle
+                            style="background: #f3f4f6; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 12px; color: #374151; transition: all 0.2s; font-weight: 600;"
+                            onmouseover="this.style.background='#e5e7eb'; this.style.transform='translateY(-1px)'" 
+                            onmouseout="this.style.background='#f3f4f6'; this.style.transform='translateY(0)'">
+                        ✏️ Düzenle
                     </button>
                     ${window.currentUser && window.currentUser.role === 'admin' ? 
-                        '<button onclick="deleteProduct(' + product.id + ')" style="background: #fef2f2; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; color: #dc2626; transition: background 0.2s;" onmouseover="this.style.background=\'#fee2e2\'" onmouseout="this.style.background=\'#fef2f2\'">Sil</button>' : 
+                        `<button onclick="deleteProduct(${product.id})" 
+                                style="background: #fef2f2; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 12px; color: #dc2626; transition: all 0.2s; font-weight: 600;"
+                                onmouseover="this.style.background='#fee2e2'; this.style.transform='translateY(-1px)'" 
+                                onmouseout="this.style.background='#fef2f2'; this.style.transform='translateY(0)'">
+                            🗑️ Sil
+                        </button>` : 
                         ''
                     }
                 </div>
@@ -226,12 +506,514 @@ function createSimpleProductRow(product) {
     `;
 }
 
-// Event listeners
+// 🎯 ÜRÜN KARTI
+function createProductCard(product) {
+    const category = categories.find(c => c.id === product.category_id);
+    const brand = brands.find(b => b.id === product.brand_id);
+    const hasLowStock = product.stock <= (product.min_stock || 5);
+    const isOutOfStock = product.stock <= 0;
+    
+    return `
+        <div style="background: white; border-radius: 16px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: all 0.3s; border: 1px solid #e2e8f0;"
+             onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 8px 25px rgba(0,0,0,0.1)'" 
+             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(0,0,0,0.05)'">
+            
+            <!-- Product Header -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <input type="checkbox" value="${product.id}" onchange="toggleProductSelection(${product.id})" style="margin-right: 8px;">
+                    <div style="width: 56px; height: 56px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; font-size: 20px;">
+                        ${product.name.charAt(0).toUpperCase()}
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-weight: 800; color: #10b981; font-size: 20px;">₺${(product.sale_price || 0).toFixed(2)}</div>
+                    ${product.purchase_price ? `<div style="font-size: 12px; color: #9ca3af;">Alış: ₺${product.purchase_price.toFixed(2)}</div>` : ''}
+                </div>
+            </div>
+            
+            <!-- Product Info -->
+            <div style="margin-bottom: 16px;">
+                <h3 style="margin: 0 0 8px 0; font-size: 18px; font-weight: 700; color: #1e293b; line-height: 1.3;">${product.name}</h3>
+                <div style="font-size: 14px; color: #64748b; margin-bottom: 12px;">
+                    ${product.code ? `<div style="margin-bottom: 4px;">📋 Kod: ${product.code}</div>` : ''}
+                    ${product.barcode ? `<div>🏷️ Barkod: ${product.barcode}</div>` : ''}
+                </div>
+            </div>
+            
+            <!-- Categories and Brand -->
+            <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+                ${category ? `<span style="background: #ede9fe; color: #7c3aed; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600;">📁 ${category.name}</span>` : ''}
+                ${brand ? `<span style="background: #dbeafe; color: #2563eb; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600;">🏷️ ${brand.name}</span>` : ''}
+            </div>
+            
+            <!-- Stock Status -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    ${isOutOfStock ? '❌' : hasLowStock ? '⚠️' : '✅'}
+                    <span style="font-weight: 700; color: ${isOutOfStock ? '#dc2626' : hasLowStock ? '#f59e0b' : '#10b981'}; font-size: 16px;">
+                        ${product.stock || 0} ${product.unit || 'adet'}
+                    </span>
+                </div>
+                <div style="font-size: 12px; color: #9ca3af;">
+                    ${isOutOfStock ? 'Stokta Yok' : hasLowStock ? 'Düşük Stok' : 'Stokta Var'}
+                </div>
+            </div>
+            
+            <!-- Actions -->
+            <div style="display: flex; gap: 8px;">
+                <button onclick="editProduct(${product.id})" 
+                        style="flex: 1; background: #f3f4f6; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-size: 12px; color: #374151; transition: all 0.2s; font-weight: 600;"
+                        onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">
+                    ✏️ Düzenle
+                </button>
+                ${window.currentUser && window.currentUser.role === 'admin' ? 
+                    `<button onclick="deleteProduct(${product.id})" 
+                            style="flex: 1; background: #fef2f2; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-size: 12px; color: #dc2626; transition: all 0.2s; font-weight: 600;"
+                            onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fef2f2'">
+                        🗑️ Sil
+                    </button>` : 
+                    ''
+                }
+            </div>
+        </div>
+    `;
+}
+
+// 🔄 TAB STİLLERİNİ GÜNCELLEME
+function updateTabStyles() {
+    const tabs = ['dashboard', 'list', 'grid'];
+    tabs.forEach(tab => {
+        const tabElement = document.getElementById(`tab-${tab}`);
+        if (tabElement) {
+            if (tab === currentView) {
+                tabElement.style.background = '#667eea';
+                tabElement.style.color = 'white';
+            } else {
+                tabElement.style.background = 'transparent';
+                tabElement.style.color = '#64748b';
+            }
+        }
+    });
+}
+
+// 🔍 FİLTRELEME FONKSİYONLARI
+function filterProducts() {
+    const search = (document.getElementById('product-search-input')?.value || '').toLowerCase();
+    const categoryId = document.getElementById('category-filter-select')?.value || '';
+    const brandId = document.getElementById('brand-filter-select')?.value || '';
+    const stockStatus = document.getElementById('stock-filter-select')?.value || '';
+    
+    let filteredProducts = products.filter(product => {
+        // Arama metni kontrolü
+        const matchesSearch = !search || 
+            product.name.toLowerCase().includes(search) ||
+            (product.code && product.code.toLowerCase().includes(search)) ||
+            (product.barcode && product.barcode.toLowerCase().includes(search));
+        
+        // Kategori kontrolü
+        const matchesCategory = !categoryId || product.category_id == categoryId;
+        
+        // Marka kontrolü
+        const matchesBrand = !brandId || product.brand_id == brandId;
+        
+        // Stok durumu kontrolü
+        let matchesStock = true;
+        if (stockStatus === 'low') {
+            matchesStock = product.stock <= (product.min_stock || 5) && product.stock > 0;
+        } else if (stockStatus === 'out') {
+            matchesStock = product.stock <= 0;
+        } else if (stockStatus === 'available') {
+            matchesStock = product.stock > (product.min_stock || 5);
+        }
+        
+        return matchesSearch && matchesCategory && matchesBrand && matchesStock;
+    });
+    
+    // Tabloyu güncelle
+    const container = document.getElementById('products-table-container');
+    if (container) {
+        container.innerHTML = createProductsTable(filteredProducts);
+    }
+}
+
+function filterProductsGrid() {
+    const search = (document.getElementById('product-search-input-grid')?.value || '').toLowerCase();
+    const categoryId = document.getElementById('category-filter-select-grid')?.value || '';
+    const brandId = document.getElementById('brand-filter-select-grid')?.value || '';
+    const stockStatus = document.getElementById('stock-filter-select-grid')?.value || '';
+    
+    let filteredProducts = products.filter(product => {
+        // Arama metni kontrolü
+        const matchesSearch = !search || 
+            product.name.toLowerCase().includes(search) ||
+            (product.code && product.code.toLowerCase().includes(search)) ||
+            (product.barcode && product.barcode.toLowerCase().includes(search));
+        
+        // Kategori kontrolü
+        const matchesCategory = !categoryId || product.category_id == categoryId;
+        
+        // Marka kontrolü
+        const matchesBrand = !brandId || product.brand_id == brandId;
+        
+        // Stok durumu kontrolü
+        let matchesStock = true;
+        if (stockStatus === 'low') {
+            matchesStock = product.stock <= (product.min_stock || 5) && product.stock > 0;
+        } else if (stockStatus === 'out') {
+            matchesStock = product.stock <= 0;
+        } else if (stockStatus === 'available') {
+            matchesStock = product.stock > (product.min_stock || 5);
+        }
+        
+        return matchesSearch && matchesCategory && matchesBrand && matchesStock;
+    });
+    
+    // Grid'i güncelle
+    const container = document.getElementById('products-grid-container');
+    if (container) {
+        container.innerHTML = createProductsGrid(filteredProducts);
+    }
+}
+
+function clearFilters() {
+    document.getElementById('product-search-input').value = '';
+    document.getElementById('category-filter-select').value = '';
+    document.getElementById('brand-filter-select').value = '';
+    document.getElementById('stock-filter-select').value = '';
+    filterProducts();
+}
+
+function clearFiltersGrid() {
+    document.getElementById('product-search-input-grid').value = '';
+    document.getElementById('category-filter-select-grid').value = '';
+    document.getElementById('brand-filter-select-grid').value = '';
+    document.getElementById('stock-filter-select-grid').value = '';
+    filterProductsGrid();
+}
+
+// ✅ ÜRÜN SEÇİMİ
+function toggleProductSelection(productId) {
+    if (selectedProducts.has(productId)) {
+        selectedProducts.delete(productId);
+    } else {
+        selectedProducts.add(productId);
+    }
+    updateSelectionUI();
+}
+
+function toggleSelectAll(checkbox) {
+    const productCheckboxes = document.querySelectorAll('input[type="checkbox"][value]');
+    productCheckboxes.forEach(cb => {
+        cb.checked = checkbox.checked;
+        const productId = parseInt(cb.value);
+        if (checkbox.checked) {
+            selectedProducts.add(productId);
+        } else {
+            selectedProducts.delete(productId);
+        }
+    });
+    updateSelectionUI();
+}
+
+function updateSelectionUI() {
+    // Seçili ürün sayısını göster
+    const selectedCount = selectedProducts.size;
+    console.log(`Seçili ürün sayısı: ${selectedCount}`);
+}
+
+// 📊 EXCEL IMPORT MODAL
+function showExcelImportModal() {
+    const modalHtml = `
+        <div id="excel-import-modal" class="modal active" style="z-index: 10000;">
+            <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+                <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 24px; border-radius: 16px 16px 0 0; color: white;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin: 0; font-size: 24px; font-weight: 700;">📊 Excel ile Toplu Ürün Yükleme</h3>
+                        <button onclick="closeProductModal('excel-import-modal')" 
+                                style="background: rgba(255,255,255,0.2); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 20px; transition: all 0.3s;"
+                                onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
+                                onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+                            ×
+                        </button>
+                    </div>
+                </div>
+                
+                <div style="padding: 24px;">
+                    <!-- Instructions -->
+                    <div style="background: #f0f9ff; padding: 20px; border-radius: 12px; border-left: 4px solid #0ea5e9; margin-bottom: 24px;">
+                        <h4 style="margin: 0 0 12px 0; color: #0c4a6e; font-size: 16px; font-weight: 700;">📋 Excel Dosyası Formatı</h4>
+                        <div style="color: #0c4a6e; font-size: 14px; line-height: 1.6;">
+                            <p style="margin: 0 0 8px 0;"><strong>Gerekli Sütunlar:</strong></p>
+                            <ul style="margin: 0; padding-left: 20px;">
+                                <li><strong>Ürün Adı</strong> (zorunlu) - Ürünün adı</li>
+                                <li><strong>Satış Fiyatı</strong> (zorunlu) - Ürünün satış fiyatı</li>
+                                <li><strong>Stok</strong> - Mevcut stok miktarı (varsayılan: 0)</li>
+                                <li><strong>Kategori</strong> - Ürün kategorisi</li>
+                                <li><strong>Marka</strong> - Ürün markası</li>
+                                <li><strong>Ürün Kodu</strong> - Ürün kodu</li>
+                                <li><strong>Barkod</strong> - Ürün barkodu</li>
+                                <li><strong>Alış Fiyatı</strong> - Ürünün alış fiyatı</li>
+                                <li><strong>Birim</strong> - Ürün birimi (varsayılan: adet)</li>
+                                <li><strong>Açıklama</strong> - Ürün açıklaması</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <!-- File Upload -->
+                    <div style="background: white; border: 2px dashed #d1d5db; border-radius: 12px; padding: 40px; text-align: center; margin-bottom: 24px;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📁</div>
+                        <h4 style="margin: 0 0 8px 0; color: #374151; font-size: 18px;">Excel Dosyasını Seçin</h4>
+                        <p style="margin: 0 0 20px 0; color: #6b7280; font-size: 14px;">.xlsx veya .xls formatında dosya yükleyin</p>
+                        <input type="file" id="excel-file-input" accept=".xlsx,.xls" 
+                               style="display: none;" onchange="handleExcelFileSelect(event)">
+                        <button onclick="document.getElementById('excel-file-input').click()" 
+                                style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 16px;">
+                            📁 Dosya Seç
+                        </button>
+                    </div>
+                    
+                    <!-- Preview Area -->
+                    <div id="excel-preview-area" style="display: none;">
+                        <h4 style="margin: 0 0 16px 0; color: #374151; font-size: 18px; font-weight: 700;">📋 Önizleme</h4>
+                        <div id="excel-preview-table" style="background: white; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb; max-height: 300px; overflow-y: auto;">
+                            <!-- Preview table will be inserted here -->
+                        </div>
+                        <div style="margin-top: 16px; display: flex; gap: 12px; justify-content: flex-end;">
+                            <button onclick="closeProductModal('excel-import-modal')" 
+                                    style="padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; color: #374151;">
+                                İptal
+                            </button>
+                            <button onclick="importProductsFromExcel()" 
+                                    style="padding: 12px 24px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                📊 Ürünleri İçe Aktar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+// 📊 EXCEL EXPORT
+function exportProductsToExcel() {
+    try {
+        // Ürün verilerini Excel formatına hazırla
+        const excelData = products.map(product => {
+            const category = categories.find(c => c.id === product.category_id);
+            const brand = brands.find(b => b.id === product.brand_id);
+            
+            return {
+                'Ürün Adı': product.name,
+                'Ürün Kodu': product.code || '',
+                'Barkod': product.barcode || '',
+                'Kategori': category ? category.name : '',
+                'Marka': brand ? brand.name : '',
+                'Stok': product.stock || 0,
+                'Birim': product.unit || 'adet',
+                'Alış Fiyatı': product.purchase_price || 0,
+                'Satış Fiyatı': product.sale_price || 0,
+                'Açıklama': product.description || ''
+            };
+        });
+        
+        // Excel dosyası oluştur ve indir
+        const ws = XLSX.utils.json_to_sheet(excelData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Ürünler');
+        
+        const fileName = `urunler_${new Date().toISOString().split('T')[0]}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+        
+        showNotification('Ürünler başarıyla Excel dosyasına aktarıldı', 'success');
+        
+    } catch (error) {
+        console.error('Excel export hatası:', error);
+        showNotification('Excel dosyası oluşturulurken hata oluştu', 'error');
+    }
+}
+
+// 📊 EXCEL IMPORT HANDLER
+function handleExcelFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet);
+            
+            // Preview oluştur
+            createExcelPreview(jsonData);
+            
+        } catch (error) {
+            console.error('Excel dosyası okuma hatası:', error);
+            showNotification('Excel dosyası okunamadı', 'error');
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function createExcelPreview(data) {
+    if (data.length === 0) {
+        showNotification('Excel dosyası boş görünüyor', 'warning');
+        return;
+    }
+    
+    // İlk 10 satırı göster
+    const previewData = data.slice(0, 10);
+    const headers = Object.keys(previewData[0]);
+    
+    const tableHtml = `
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead style="background: #f8fafc;">
+                <tr>
+                    ${headers.map(header => `<th style="padding: 12px; text-align: left; font-weight: 700; color: #374151; border-bottom: 2px solid #e2e8f0;">${header}</th>`).join('')}
+                </tr>
+            </thead>
+            <tbody>
+                ${previewData.map((row, index) => `
+                    <tr style="border-bottom: 1px solid #f3f4f6;">
+                        ${headers.map(header => `<td style="padding: 12px; color: #374151;">${row[header] || ''}</td>`).join('')}
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+        ${data.length > 10 ? `<div style="text-align: center; padding: 12px; color: #6b7280; font-size: 14px;">ve ${data.length - 10} satır daha...</div>` : ''}
+    `;
+    
+    document.getElementById('excel-preview-table').innerHTML = tableHtml;
+    document.getElementById('excel-preview-area').style.display = 'block';
+    
+    // Global değişkene kaydet
+    window.excelImportData = data;
+}
+
+async function importProductsFromExcel() {
+    if (!window.excelImportData) {
+        showNotification('Önce Excel dosyasını seçin', 'warning');
+        return;
+    }
+    
+    try {
+        let successCount = 0;
+        let errorCount = 0;
+        const errors = [];
+        
+        for (const row of window.excelImportData) {
+            try {
+                // Veri dönüşümü
+                const productData = {
+                    name: row['Ürün Adı'] || row['urun_adi'] || row['name'],
+                    code: row['Ürün Kodu'] || row['urun_kodu'] || row['code'] || null,
+                    barcode: row['Barkod'] || row['barkod'] || row['barcode'] || null,
+                    category_id: null,
+                    brand_id: null,
+                    stock: parseFloat(row['Stok'] || row['stok'] || row['stock']) || 0,
+                    unit: row['Birim'] || row['birim'] || row['unit'] || 'adet',
+                    purchase_price: parseFloat(row['Alış Fiyatı'] || row['alis_fiyati'] || row['purchase_price']) || 0,
+                    sale_price: parseFloat(row['Satış Fiyatı'] || row['satis_fiyati'] || row['sale_price']) || 0,
+                    description: row['Açıklama'] || row['aciklama'] || row['description'] || null
+                };
+                
+                // Validasyon
+                if (!productData.name) {
+                    throw new Error('Ürün adı boş olamaz');
+                }
+                
+                if (productData.sale_price <= 0) {
+                    throw new Error('Satış fiyatı 0\'dan büyük olmalıdır');
+                }
+                
+                // Kategori bul
+                const categoryName = row['Kategori'] || row['kategori'] || row['category'];
+                if (categoryName) {
+                    let category = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+                    if (!category) {
+                        // Kategori yoksa oluştur
+                        category = await ipcRenderer.invoke('add-category', {
+                            name: categoryName,
+                            icon: '📦',
+                            color: '#667eea'
+                        });
+                        categories.push(category);
+                    }
+                    productData.category_id = category.id;
+                }
+                
+                // Marka bul
+                const brandName = row['Marka'] || row['marka'] || row['brand'];
+                if (brandName) {
+                    let brand = brands.find(b => b.name.toLowerCase() === brandName.toLowerCase());
+                    if (!brand) {
+                        // Marka yoksa oluştur
+                        brand = await ipcRenderer.invoke('add-brand', {
+                            name: brandName,
+                            icon: '🏷️',
+                            color: '#667eea'
+                        });
+                        brands.push(brand);
+                    }
+                    productData.brand_id = brand.id;
+                }
+                
+                // Ürünü ekle
+                const newProduct = await ipcRenderer.invoke('add-product', productData);
+                products.push(newProduct);
+                successCount++;
+                
+            } catch (error) {
+                errorCount++;
+                errors.push(`${row['Ürün Adı'] || 'Bilinmeyen'}: ${error.message}`);
+            }
+        }
+        
+        // Sonuçları göster
+        if (successCount > 0) {
+            showNotification(`${successCount} ürün başarıyla eklendi`, 'success');
+        }
+        
+        if (errorCount > 0) {
+            showNotification(`${errorCount} ürün eklenemedi`, 'warning');
+            console.error('Excel import hataları:', errors);
+        }
+        
+        // Modal'ı kapat ve listeyi güncelle
+        closeProductModal('excel-import-modal');
+        
+        // Mevcut görünümü yenile
+        if (currentView === 'dashboard') {
+            showDashboard();
+        } else if (currentView === 'list') {
+            showListView();
+        } else if (currentView === 'grid') {
+            showGridView();
+        }
+        
+        // Satış ekranını güncelle
+        if (typeof updateSaleProductSelect === 'function') {
+            updateSaleProductSelect();
+        }
+        
+    } catch (error) {
+        console.error('Excel import hatası:', error);
+        showNotification('Ürünler içe aktarılırken hata oluştu', 'error');
+    }
+}
+
+// 🎯 EVENT LISTENERS
 function setupProductEventListeners() {
     // Event listeners zaten HTML'de inline olarak var
 }
 
-// ESC tuşu ile modal kapatma
+// ⌨️ ESC TUŞU İLE MODAL KAPATMA
 function handleProductModalKeydown(event) {
     if (event.key === 'Escape') {
         // Tüm aktif modal'ları bul
@@ -255,8 +1037,13 @@ function handleProductModalKeydown(event) {
         const modalId = topModal.id;
         console.log(`ESC ile modal kapatılıyor: ${modalId} (z-index: ${topZIndex})`);
         
-        // Alt modalları kontrol et (kategori, marka, ürün ekleme, vs.)
-        const subModals = ['categories-modal', 'brands-modal', 'add-product-modal', 'edit-product-modal', 'add-category-modal', 'add-brand-modal', 'edit-category-modal', 'edit-brand-modal', 'quick-add-category-from-product-modal', 'quick-add-brand-from-product-modal'];
+        // Alt modalları kontrol et
+        const subModals = [
+            'categories-modal', 'brands-modal', 'add-product-modal', 'edit-product-modal', 
+            'add-category-modal', 'add-brand-modal', 'edit-category-modal', 'edit-brand-modal',
+            'quick-add-category-from-product-modal', 'quick-add-brand-from-product-modal',
+            'excel-import-modal', 'bulk-operations-modal'
+        ];
         
         if (subModals.includes(modalId)) {
             // Alt modalları kapat
@@ -275,1040 +1062,7 @@ function handleProductModalKeydown(event) {
     }
 }
 
-// Filtreleme
-function filterProductsList() {
-    const search = (document.getElementById('product-search-input')?.value || '').toLowerCase();
-    const categoryId = document.getElementById('category-filter-select')?.value || '';
-    const brandId = document.getElementById('brand-filter-select')?.value || '';
-    
-    console.log('Filtering:', { search, categoryId, brandId });
-    
-    // Ürünleri filtrele
-    let filteredProducts = products.filter(product => {
-        // Arama metni kontrolü
-        const matchesSearch = !search || 
-            product.name.toLowerCase().includes(search) ||
-            (product.code && product.code.toLowerCase().includes(search)) ||
-            (product.barcode && product.barcode.toLowerCase().includes(search));
-        
-        // Kategori kontrolü
-        const matchesCategory = !categoryId || product.category_id == categoryId;
-        
-        // Marka kontrolü
-        const matchesBrand = !brandId || product.brand_id == brandId;
-        
-        return matchesSearch && matchesCategory && matchesBrand;
-    });
-    
-    // Filtrelenmiş ürünleri göster
-    const container = document.getElementById('products-list-container');
-    if (container) {
-        container.innerHTML = createSimpleProductsList(filteredProducts);
-    }
-    
-    console.log(`Filtrelenmiş ürün sayısı: ${filteredProducts.length}`);
-}
-
-// Placeholder fonksiyonlar
-function showProductModal() {
-    const modalHtml = `
-        <div id="add-product-modal" class="modal active" style="z-index: 9999;">
-            <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px 12px 0 0; color: white;">
-                    <h3 style="margin: 0; font-size: 20px; font-weight: 600;">Yeni Ürün Ekle</h3>
-                </div>
-                
-                <form id="new-add-product-form" onsubmit="handleAddProduct(event)" style="padding: 24px;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Ürün Adı *</label>
-                            <input type="text" id="product-name" name="name" required 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Ürün Kodu</label>
-                            <input type="text" id="product-code" name="code" 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                        </div>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Barkod</label>
-                            <input type="text" id="product-barcode" name="barcode" 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Birim</label>
-                            <select id="product-unit" name="unit" 
-                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;">
-                                <option value="adet">Adet</option>
-                                <option value="kg">Kilogram</option>
-                                <option value="lt">Litre</option>
-                                <option value="m">Metre</option>
-                                <option value="m2">Metrekare</option>
-                                <option value="m3">Metreküp</option>
-                                <option value="paket">Paket</option>
-                                <option value="kutu">Kutu</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Kategori</label>
-                            <div style="display: flex; gap: 8px;">
-                                <select id="product-category" name="category_id" 
-                                        style="flex: 1; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;">
-                                    <option value="">Kategori Seçin</option>
-                                    ${categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('')}
-                                </select>
-                                <button type="button" onclick="showQuickAddCategoryFromProduct()" 
-                                        style="padding: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; transition: all 0.2s;"
-                                        onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'"
-                                        title="Hızlı Kategori Ekle">
-                                    +
-                                </button>
-                            </div>
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Marka</label>
-                            <div style="display: flex; gap: 8px;">
-                                <select id="product-brand" name="brand_id" 
-                                        style="flex: 1; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;">
-                                    <option value="">Marka Seçin</option>
-                                    ${brands.map(brand => `<option value="${brand.id}">${brand.name}</option>`).join('')}
-                                </select>
-                                <button type="button" onclick="showQuickAddBrandFromProduct()" 
-                                        style="padding: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; transition: all 0.2s;"
-                                        onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'"
-                                        title="Hızlı Marka Ekle">
-                                    +
-                                </button>
-                            </div>
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Stok</label>
-                            <input type="number" id="product-stock" name="stock" value="0" min="0" step="0.01" 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                        </div>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Alış Fiyatı (₺)</label>
-                            <input type="number" id="product-purchase-price" name="purchase_price" value="0" min="0" step="0.01" 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Satış Fiyatı (₺) *</label>
-                            <input type="number" id="product-sale-price" name="sale_price" value="0" min="0.01" step="0.01" required 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                        </div>
-                    </div>
-                    
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Açıklama</label>
-                        <textarea id="product-description" name="description" rows="3" 
-                                  style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; resize: vertical;"
-                                  onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'"></textarea>
-                    </div>
-                    
-                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                        <button type="button" onclick="event.stopPropagation(); closeProductModal('add-product-modal')" 
-                                style="padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            İptal
-                        </button>
-                        <button type="submit" 
-                                style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            Ürün Ekle
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    document.getElementById('product-name').focus();
-}
-
-async function handleAddProduct(event) {
-    event.preventDefault();
-    
-    const formData = new FormData(event.target);
-    const productData = {
-        name: formData.get('name').trim(),
-        code: formData.get('code') || null,
-        barcode: formData.get('barcode') || null,
-        unit: formData.get('unit') || 'adet',
-        category_id: formData.get('category_id') || null,
-        brand_id: formData.get('brand_id') || null,
-        stock: parseFloat(formData.get('stock')) || 0,
-        purchase_price: parseFloat(formData.get('purchase_price')) || 0,
-        sale_price: parseFloat(formData.get('sale_price')) || 0,
-        description: formData.get('description') || null
-    };
-    
-    // Validasyon
-    if (!productData.name) {
-        showNotification('Ürün adı zorunludur', 'error');
-        return;
-    }
-    
-    if (productData.sale_price <= 0) {
-        showNotification('Satış fiyatı 0\'dan büyük olmalıdır', 'error');
-        return;
-    }
-    
-    try {
-        const newProduct = await ipcRenderer.invoke('add-product', productData);
-        products.push(newProduct);
-        
-        // Form'u reset et
-        event.target.reset();
-        
-        showNotification('Ürün başarıyla eklendi', 'success');
-        
-        // Modal'ı kapat
-        setTimeout(() => {
-            closeProductModal('add-product-modal');
-        }, 100);
-        
-        // Ürün listesini güncelle
-        const container = document.getElementById('products-list-container');
-        if (container) {
-            container.innerHTML = createSimpleProductsList();
-        }
-        
-        // Ana modal'daki sayıları güncelle
-        const header = document.querySelector('#product-management-modal h2');
-        if (header) {
-            const countP = header.nextElementSibling;
-            if (countP) {
-                countP.textContent = `${products.length} Ürün · ${categories.length} Kategori · ${brands.length} Marka`;
-            }
-        }
-        
-        // Satış ekranındaki ürün seçimini güncelle
-        console.log('Yeni ürün eklendi, satış ekranı güncelleniyor:', newProduct);
-        updateSaleProductSelect(newProduct);
-        
-        // Eğer bu modal satış ekranından açıldıysa, satış ekranına odaklan
-        setTimeout(() => {
-            const saleProductSelect = document.getElementById('sale-product');
-            if (saleProductSelect) {
-                saleProductSelect.focus();
-                console.log('Satış ekranındaki ürün seçimi odaklandı');
-            }
-        }, 100);
-        
-    } catch (error) {
-        console.error('Ürün eklenirken hata:', error);
-        showNotification('Ürün eklenirken hata oluştu', 'error');
-    }
-}
-
-function showCategoriesModal() {
-    const modalHtml = `
-        <div id="categories-modal" class="modal active" style="z-index: 9998;">
-            <div class="modal-content" style="max-width: 600px; border-radius: 12px;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px 12px 0 0; color: white;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h3 style="margin: 0; font-size: 20px; font-weight: 600;">Kategori Yönetimi</h3>
-                        <button onclick="event.stopPropagation(); closeProductModal('categories-modal')" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 18px; z-index: 9999; position: relative;" title="Kapat">×</button>
-                    </div>
-                </div>
-                
-                <div style="padding: 20px;">
-                    <button onclick="showAddCategoryModal()" class="btn btn-primary" style="margin-bottom: 20px;">+ Yeni Kategori Ekle</button>
-                    
-                    <div style="background: white; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb;">
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <thead style="background: #f9fafb;">
-                                <tr>
-                                    <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">Kategori Adı</th>
-                                    <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151;">İşlemler</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${categories.map(cat => `
-                                    <tr style="border-bottom: 1px solid #f3f4f6;">
-                                        <td style="padding: 12px; font-weight: 500;">${cat.name}</td>
-                                        <td style="padding: 12px; text-align: center;">
-                                            <button onclick="editCategory(${cat.id})" style="background: #f3f4f6; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Düzenle</button>
-                                            ${window.currentUser && window.currentUser.role === 'admin' ? 
-                                                '<button onclick="deleteCategory(' + cat.id + ')" style="background: #fef2f2; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; color: #dc2626;">Sil</button>' : 
-                                                ''
-                                            }
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                        ${categories.length === 0 ? '<div style="text-align: center; padding: 40px; color: #9ca3af;">Henüz kategori eklenmemiş</div>' : ''}
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-}
-
-function showBrandsModal() {
-    const modalHtml = `
-        <div id="brands-modal" class="modal active" style="z-index: 9998;">
-            <div class="modal-content" style="max-width: 600px; border-radius: 12px;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px 12px 0 0; color: white;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h3 style="margin: 0; font-size: 20px; font-weight: 600;">Marka Yönetimi</h3>
-                        <button onclick="event.stopPropagation(); closeProductModal('brands-modal')" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 18px; z-index: 9999; position: relative;" title="Kapat">×</button>
-                    </div>
-                </div>
-                
-                <div style="padding: 20px;">
-                    <button onclick="showAddBrandModal()" class="btn btn-primary" style="margin-bottom: 20px;">+ Yeni Marka Ekle</button>
-                    
-                    <div style="background: white; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb;">
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <thead style="background: #f9fafb;">
-                                <tr>
-                                    <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">Marka Adı</th>
-                                    <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151;">İşlemler</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${brands.map(brand => `
-                                    <tr style="border-bottom: 1px solid #f3f4f6;">
-                                        <td style="padding: 12px; font-weight: 500;">${brand.name}</td>
-                                        <td style="padding: 12px; text-align: center;">
-                                            <button onclick="editBrand(${brand.id})" style="background: #f3f4f6; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Düzenle</button>
-                                            ${window.currentUser && window.currentUser.role === 'admin' ? 
-                                                '<button onclick="deleteBrand(' + brand.id + ')" style="background: #fef2f2; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; color: #dc2626;">Sil</button>' : 
-                                                ''
-                                            }
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                        ${brands.length === 0 ? '<div style="text-align: center; padding: 40px; color: #9ca3af;">Henüz marka eklenmemiş</div>' : ''}
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-}
-
-function editProduct(id) {
-    const product = products.find(p => p.id === id);
-    if (!product) {
-        showNotification('Ürün bulunamadı', 'error');
-        return;
-    }
-    
-    const modalHtml = `
-        <div id="edit-product-modal" class="modal active" style="z-index: 9999;">
-            <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px 12px 0 0; color: white;">
-                    <h3 style="margin: 0; font-size: 20px; font-weight: 600;">Ürün Düzenle</h3>
-                </div>
-                
-                <form id="edit-product-form" onsubmit="handleEditProduct(event, ${id})" style="padding: 24px;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Ürün Adı *</label>
-                            <input type="text" id="edit-product-name" name="name" value="${product.name}" required 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Ürün Kodu</label>
-                            <input type="text" id="edit-product-code" name="code" value="${product.code || ''}" 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                        </div>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Barkod</label>
-                            <input type="text" id="edit-product-barcode" name="barcode" value="${product.barcode || ''}" 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Birim</label>
-                            <select id="edit-product-unit" name="unit" 
-                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;">
-                                <option value="adet" ${product.unit === 'adet' ? 'selected' : ''}>Adet</option>
-                                <option value="kg" ${product.unit === 'kg' ? 'selected' : ''}>Kilogram</option>
-                                <option value="lt" ${product.unit === 'lt' ? 'selected' : ''}>Litre</option>
-                                <option value="m" ${product.unit === 'm' ? 'selected' : ''}>Metre</option>
-                                <option value="m2" ${product.unit === 'm2' ? 'selected' : ''}>Metrekare</option>
-                                <option value="m3" ${product.unit === 'm3' ? 'selected' : ''}>Metreküp</option>
-                                <option value="paket" ${product.unit === 'paket' ? 'selected' : ''}>Paket</option>
-                                <option value="kutu" ${product.unit === 'kutu' ? 'selected' : ''}>Kutu</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Kategori</label>
-                            <select id="edit-product-category" name="category_id" 
-                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;">
-                                <option value="">Kategori Seçin</option>
-                                ${categories.map(cat => `<option value="${cat.id}" ${product.category_id === cat.id ? 'selected' : ''}>${cat.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Marka</label>
-                            <select id="edit-product-brand" name="brand_id" 
-                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; background: white;">
-                                <option value="">Marka Seçin</option>
-                                ${brands.map(brand => `<option value="${brand.id}" ${product.brand_id === brand.id ? 'selected' : ''}>${brand.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Stok</label>
-                            <input type="number" id="edit-product-stock" name="stock" value="${product.stock || 0}" min="0" step="0.01" 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                        </div>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Alış Fiyatı (₺)</label>
-                            <input type="number" id="edit-product-purchase-price" name="purchase_price" value="${product.purchase_price || 0}" min="0" step="0.01" 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Satış Fiyatı (₺) *</label>
-                            <input type="number" id="edit-product-sale-price" name="sale_price" value="${product.sale_price || 0}" min="0.01" step="0.01" required 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                                   onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                        </div>
-                    </div>
-                    
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Açıklama</label>
-                        <textarea id="edit-product-description" name="description" rows="3" 
-                                  style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; resize: vertical;"
-                                  onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">${product.description || ''}</textarea>
-                    </div>
-                    
-                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                        <button type="button" onclick="closeProductModal('edit-product-modal')" 
-                                style="padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            İptal
-                        </button>
-                        <button type="submit" 
-                                style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            Güncelle
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    document.getElementById('edit-product-name').focus();
-}
-
-async function handleEditProduct(event, id) {
-    event.preventDefault();
-    
-    const formData = new FormData(event.target);
-    const productData = {
-        name: formData.get('name').trim(),
-        code: formData.get('code') || null,
-        barcode: formData.get('barcode') || null,
-        unit: formData.get('unit') || 'adet',
-        category_id: formData.get('category_id') || null,
-        brand_id: formData.get('brand_id') || null,
-        stock: parseFloat(formData.get('stock')) || 0,
-        purchase_price: parseFloat(formData.get('purchase_price')) || 0,
-        sale_price: parseFloat(formData.get('sale_price')) || 0,
-        description: formData.get('description') || null
-    };
-    
-    // Validasyon
-    if (!productData.name) {
-        showNotification('Ürün adı zorunludur', 'error');
-        return;
-    }
-    
-    if (productData.sale_price <= 0) {
-        showNotification('Satış fiyatı 0\'dan büyük olmalıdır', 'error');
-        return;
-    }
-    
-    try {
-        await ipcRenderer.invoke('update-product', { id, ...productData });
-        
-        // Veritabanından taze veri çek
-        await loadProductsData();
-        
-        showNotification('Ürün başarıyla güncellendi', 'success');
-        
-        // Modal'ı kapat
-        setTimeout(() => {
-            closeProductModal('edit-product-modal');
-        }, 100);
-        
-        // Ürün listesini güncelle
-        const container = document.getElementById('products-list-container');
-        if (container) {
-            console.log('Ürün listesi güncelleniyor, toplam ürün sayısı:', products.length);
-            container.innerHTML = createSimpleProductsList();
-        }
-        
-    } catch (error) {
-        console.error('Ürün güncellenirken hata:', error);
-        showNotification('Ürün güncellenirken hata oluştu', 'error');
-    }
-}
-
-async function deleteProduct(id) {
-    // Admin kontrolü
-    if (!window.currentUser || window.currentUser.role !== 'admin') {
-        showNotification('Bu işlem için admin yetkisi gereklidir', 'error');
-        return;
-    }
-    
-    if (!confirm('Bu ürünü silmek istediğinizden emin misiniz?')) return;
-    
-    try {
-        await ipcRenderer.invoke('delete-product', id);
-        await loadProductsData();
-        
-        // Sadece ürün listesini güncelle - modal açmadan
-        const container = document.getElementById('products-list-container');
-        if (container) {
-            container.innerHTML = createSimpleProductsList();
-        }
-        
-        // Satış ekranındaki ürün seçimini güncelle (silinen ürünü kaldır)
-        updateSaleProductSelectAfterDelete(id);
-        
-        showNotification('Ürün başarıyla silindi', 'success');
-    } catch (error) {
-        console.error('Ürün silinemedi:', error);
-        showNotification('Ürün silinemedi', 'error');
-    }
-}
-
-// Kategori işlemleri
-function showAddCategoryModal() {
-    const modalHtml = `
-        <div id="add-category-modal" class="modal active" style="z-index: 9999;">
-            <div class="modal-content" style="max-width: 400px;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 16px; border-radius: 12px 12px 0 0; color: white;">
-                    <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Yeni Kategori</h3>
-                </div>
-                
-                <form id="category-form" onsubmit="handleAddCategory(event)" style="padding: 20px;">
-                    <div style="margin-bottom: 16px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Kategori Adı *</label>
-                        <input type="text" id="category-name" name="name" required 
-                               style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                               onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                    </div>
-                    
-                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                        <button type="button" onclick="event.stopPropagation(); closeProductModal('add-category-modal')" 
-                                style="padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            İptal
-                        </button>
-                        <button type="submit" 
-                                style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            Kaydet
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    document.getElementById('category-name').focus();
-}
-
-async function handleAddCategory(event) {
-    event.preventDefault();
-    
-    const formData = new FormData(event.target);
-    const categoryData = {
-        name: formData.get('name').trim(),
-        icon: '📦',
-        color: '#667eea'
-    };
-    
-    if (!categoryData.name) {
-        showNotification('Kategori adı zorunludur', 'error');
-        return;
-    }
-    
-    try {
-        await ipcRenderer.invoke('add-category', categoryData);
-        await loadCategoriesData();
-        
-        closeProductModal('add-category-modal');
-        showNotification('Kategori başarıyla eklendi', 'success');
-        
-        // Kategori modalını yenile
-        closeProductModal('categories-modal');
-        showCategoriesModal();
-        
-    } catch (error) {
-        console.error('Kategori eklenirken hata:', error);
-        showNotification('Kategori eklenirken hata oluştu', 'error');
-    }
-}
-
-async function deleteCategory(id) {
-    const category = categories.find(c => c.id === id);
-    if (!category) return;
-    
-    // Kategoriye ait ürün var mı kontrol et
-    const productsInCategory = products.filter(p => p.category_id === id);
-    if (productsInCategory.length > 0) {
-        showNotification(`Bu kategoride ${productsInCategory.length} ürün var. Önce ürünleri başka kategoriye taşıyın.`, 'warning');
-        return;
-    }
-    
-    if (!confirm(`"${category.name}" kategorisini silmek istediğinizden emin misiniz?`)) {
-        return;
-    }
-    
-    try {
-        await ipcRenderer.invoke('delete-category', id);
-        await loadCategoriesData();
-        
-        // Kategori listesini yenile - modal'ı kapatmadan
-        const categoriesModal = document.getElementById('categories-modal');
-        if (categoriesModal) {
-            categoriesModal.remove();
-            showCategoriesModal();
-        }
-        
-        showNotification('Kategori başarıyla silindi', 'success');
-    } catch (error) {
-        console.error('Kategori silinirken hata:', error);
-        showNotification('Kategori silinirken hata oluştu', 'error');
-    }
-}
-
-function editCategory(id) {
-    const category = categories.find(c => c.id === id);
-    if (!category) return;
-    
-    const modalHtml = `
-        <div id="edit-category-modal" class="modal active" style="z-index: 9999;">
-            <div class="modal-content" style="max-width: 400px;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 16px; border-radius: 12px 12px 0 0; color: white; display: flex; justify-content: space-between; align-items: center;">
-                    <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Kategori Düzenle</h3>
-                    <button onclick="event.stopPropagation(); closeProductModal('edit-category-modal')" 
-                            style="background: rgba(255,255,255,0.2); border: none; color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 18px;">
-                        ×
-                    </button>
-                </div>
-                
-                <form id="edit-category-form" onsubmit="handleEditCategory(event)" style="padding: 20px;">
-                    <input type="hidden" name="id" value="${category.id}">
-                    
-                    <div style="margin-bottom: 16px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Kategori Adı *</label>
-                        <input type="text" id="edit-category-name" name="name" value="${category.name}" required 
-                               style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                               onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                    </div>
-                    
-                    <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
-                        <button type="button" onclick="closeProductModal('edit-category-modal')" 
-                                style="padding: 12px 24px; background: #f3f4f6; color: #374151; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            İptal
-                        </button>
-                        <button type="submit" 
-                                style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            Güncelle
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    document.getElementById('edit-category-name').focus();
-}
-
-async function handleEditCategory(event) {
-    event.preventDefault();
-    
-    const formData = new FormData(event.target);
-    const categoryData = {
-        id: parseInt(formData.get('id')),
-        name: formData.get('name').trim()
-    };
-    
-    if (!categoryData.name) {
-        showNotification('Kategori adı zorunludur', 'error');
-        return;
-    }
-    
-    try {
-        await ipcRenderer.invoke('update-category', categoryData);
-        await loadCategoriesData();
-        
-        closeProductModal('edit-category-modal');
-        showNotification('Kategori başarıyla güncellendi', 'success');
-        
-        // Kategori modalını yenile
-        closeProductModal('categories-modal');
-        showCategoriesModal();
-        
-    } catch (error) {
-        console.error('Kategori güncellenirken hata:', error);
-        showNotification('Kategori güncellenirken hata oluştu', 'error');
-    }
-}
-
-// Marka işlemleri
-function showAddBrandModal() {
-    const modalHtml = `
-        <div id="add-brand-modal" class="modal active" style="z-index: 9999;">
-            <div class="modal-content" style="max-width: 400px;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 16px; border-radius: 12px 12px 0 0; color: white;">
-                    <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Yeni Marka</h3>
-                </div>
-                
-                <form id="brand-form" onsubmit="handleAddBrand(event)" style="padding: 20px;">
-                    <div style="margin-bottom: 16px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Marka Adı *</label>
-                        <input type="text" id="brand-name" name="name" required 
-                               style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                               onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                    </div>
-                    
-                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                        <button type="button" onclick="closeProductModal('add-brand-modal')" 
-                                style="padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            İptal
-                        </button>
-                        <button type="submit" 
-                                style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            Kaydet
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    document.getElementById('brand-name').focus();
-}
-
-async function handleAddBrand(event) {
-    event.preventDefault();
-    
-    const formData = new FormData(event.target);
-    const brandData = {
-        name: formData.get('name').trim(),
-        icon: '🏷️',
-        color: '#667eea'
-    };
-    
-    if (!brandData.name) {
-        showNotification('Marka adı zorunludur', 'error');
-        return;
-    }
-    
-    try {
-        await ipcRenderer.invoke('add-brand', brandData);
-        await loadBrands();
-        
-        closeProductModal('add-brand-modal');
-        showNotification('Marka başarıyla eklendi', 'success');
-        
-        // Marka modalını yenile
-        closeProductModal('brands-modal');
-        showBrandsModal();
-        
-    } catch (error) {
-        console.error('Marka eklenirken hata:', error);
-        showNotification('Marka eklenirken hata oluştu', 'error');
-    }
-}
-
-async function deleteBrand(id) {
-    const brand = brands.find(b => b.id === id);
-    if (!brand) return;
-    
-    // Markaya ait ürün var mı kontrol et
-    const productsInBrand = products.filter(p => p.brand_id === id);
-    if (productsInBrand.length > 0) {
-        showNotification(`Bu markada ${productsInBrand.length} ürün var. Önce ürünleri başka markaya taşıyın.`, 'warning');
-        return;
-    }
-    
-    if (!confirm(`"${brand.name}" markasını silmek istediğinizden emin misiniz?`)) {
-        return;
-    }
-    
-    try {
-        await ipcRenderer.invoke('delete-brand', id);
-        await loadBrands();
-        
-        // Marka listesini yenile - modal'ı kapatmadan
-        const brandsModal = document.getElementById('brands-modal');
-        if (brandsModal) {
-            brandsModal.remove();
-            showBrandsModal();
-        }
-        
-        showNotification('Marka başarıyla silindi', 'success');
-    } catch (error) {
-        console.error('Marka silinirken hata:', error);
-        showNotification('Marka silinirken hata oluştu', 'error');
-    }
-}
-
-function editBrand(id) {
-    const brand = brands.find(b => b.id === id);
-    if (!brand) return;
-    
-    const modalHtml = `
-        <div id="edit-brand-modal" class="modal active" style="z-index: 9999;">
-            <div class="modal-content" style="max-width: 400px;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 16px; border-radius: 12px 12px 0 0; color: white;">
-                    <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Marka Düzenle</h3>
-                </div>
-                
-                <form id="edit-brand-form" onsubmit="handleEditBrand(event, ${id})" style="padding: 20px;">
-                    <div style="margin-bottom: 16px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Marka Adı *</label>
-                        <input type="text" id="edit-brand-name" name="name" value="${brand.name}" required 
-                               style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                               onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                    </div>
-                    
-                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                        <button type="button" onclick="closeProductModal('edit-brand-modal')" 
-                                style="padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            İptal
-                        </button>
-                        <button type="submit" 
-                                style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            Güncelle
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    document.getElementById('edit-brand-name').focus();
-    document.getElementById('edit-brand-name').select();
-}
-
-async function handleEditBrand(event, brandId) {
-    event.preventDefault();
-    
-    const formData = new FormData(event.target);
-    const brandData = {
-        name: formData.get('name').trim()
-    };
-    
-    if (!brandData.name) {
-        showNotification('Marka adı zorunludur', 'error');
-        return;
-    }
-    
-    try {
-        await ipcRenderer.invoke('update-brand', brandId, brandData);
-        await loadBrands();
-        
-        closeProductModal('edit-brand-modal');
-        showNotification('Marka başarıyla güncellendi', 'success');
-        
-        // Marka modalını yenile
-        const brandsModal = document.getElementById('brands-modal');
-        if (brandsModal) {
-            brandsModal.remove();
-            showBrandsModal();
-        }
-        
-    } catch (error) {
-        console.error('Marka güncellenirken hata:', error);
-        showNotification('Marka güncellenirken hata oluştu', 'error');
-    }
-}
-
-// Ürün ekleme formundan hızlı kategori ekleme
-function showQuickAddCategoryFromProduct() {
-    const modalHtml = `
-        <div id="quick-add-category-from-product-modal" class="modal active" style="z-index: 10000;">
-            <div class="modal-content" style="max-width: 400px;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 16px; border-radius: 12px 12px 0 0; color: white;">
-                    <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Hızlı Kategori Ekle</h3>
-                </div>
-                
-                <form id="quick-category-from-product-form" onsubmit="handleQuickAddCategoryFromProduct(event)" style="padding: 20px;">
-                    <div style="margin-bottom: 16px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Kategori Adı *</label>
-                        <input type="text" id="quick-category-from-product-name" name="name" required 
-                               style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                               onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                    </div>
-                    
-                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                        <button type="button" onclick="closeProductModal('quick-add-category-from-product-modal')" 
-                                style="padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            İptal
-                        </button>
-                        <button type="submit" 
-                                style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            Ekle
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    document.getElementById('quick-category-from-product-name').focus();
-}
-
-async function handleQuickAddCategoryFromProduct(event) {
-    event.preventDefault();
-    
-    const formData = new FormData(event.target);
-    const categoryData = {
-        name: formData.get('name').trim(),
-        icon: '📦',
-        color: '#667eea'
-    };
-    
-    if (!categoryData.name) {
-        showNotification('Kategori adı zorunludur', 'error');
-        return;
-    }
-    
-    try {
-        const newCategory = await ipcRenderer.invoke('add-category', categoryData);
-        categories.push(newCategory);
-        
-        closeProductModal('quick-add-category-from-product-modal');
-        showNotification('Kategori başarıyla eklendi', 'success');
-        
-        // Kategori dropdown'unu güncelle
-        const categorySelect = document.getElementById('product-category');
-        if (categorySelect) {
-            const newOption = document.createElement('option');
-            newOption.value = newCategory.id;
-            newOption.textContent = newCategory.name;
-            categorySelect.appendChild(newOption);
-            categorySelect.value = newCategory.id; // Yeni eklenen kategoriyi seç
-        }
-        
-    } catch (error) {
-        console.error('Kategori eklenirken hata:', error);
-        showNotification('Kategori eklenirken hata oluştu', 'error');
-    }
-}
-
-// Ürün ekleme formundan hızlı marka ekleme
-function showQuickAddBrandFromProduct() {
-    const modalHtml = `
-        <div id="quick-add-brand-from-product-modal" class="modal active" style="z-index: 10000;">
-            <div class="modal-content" style="max-width: 400px;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 16px; border-radius: 12px 12px 0 0; color: white;">
-                    <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Hızlı Marka Ekle</h3>
-                </div>
-                
-                <form id="quick-brand-from-product-form" onsubmit="handleQuickAddBrandFromProduct(event)" style="padding: 20px;">
-                    <div style="margin-bottom: 16px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #374151;">Marka Adı *</label>
-                        <input type="text" id="quick-brand-from-product-name" name="name" required 
-                               style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none;"
-                               onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
-                    </div>
-                    
-                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                        <button type="button" onclick="closeProductModal('quick-add-brand-from-product-modal')" 
-                                style="padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            İptal
-                        </button>
-                        <button type="submit" 
-                                style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                            Ekle
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    document.getElementById('quick-brand-from-product-name').focus();
-}
-
-async function handleQuickAddBrandFromProduct(event) {
-    event.preventDefault();
-    
-    const formData = new FormData(event.target);
-    const brandData = {
-        name: formData.get('name').trim(),
-        icon: '🏷️',
-        color: '#667eea'
-    };
-    
-    if (!brandData.name) {
-        showNotification('Marka adı zorunludur', 'error');
-        return;
-    }
-    
-    try {
-        const newBrand = await ipcRenderer.invoke('add-brand', brandData);
-        brands.push(newBrand);
-        
-        closeProductModal('quick-add-brand-from-product-modal');
-        showNotification('Marka başarıyla eklendi', 'success');
-        
-        // Marka dropdown'unu güncelle
-        const brandSelect = document.getElementById('product-brand');
-        if (brandSelect) {
-            const newOption = document.createElement('option');
-            newOption.value = newBrand.id;
-            newOption.textContent = newBrand.name;
-            brandSelect.appendChild(newOption);
-            brandSelect.value = newBrand.id; // Yeni eklenen markayı seç
-        }
-        
-    } catch (error) {
-        console.error('Marka eklenirken hata:', error);
-        showNotification('Marka eklenirken hata oluştu', 'error');
-    }
-}
-
-// Close modal fonksiyonu - modal'ı tamamen kaldır
+// 🚪 MODAL KAPATMA FONKSİYONU
 function closeProductModal(modalId) {
     try {
         const modal = document.getElementById(modalId);
@@ -1323,119 +1077,763 @@ function closeProductModal(modalId) {
     }
 }
 
-// Satış ekranından ürün ekleme modalını aç
-function showProductModalFromSale() {
-    // Önce verileri yükle
-    Promise.all([
-        loadCategoriesData(),
-        loadBrandsData(),
-        loadProductsData()
-    ]).then(() => {
-        // Ürün ekleme modalını aç
-        showProductModal();
-    }).catch(error => {
-        console.error('Veriler yüklenirken hata:', error);
-        showNotification('Veriler yüklenirken hata oluştu', 'error');
-    });
-}
-
-// Satış ekranındaki ürün seçimini güncelle
-function updateSaleProductSelect(newProduct) {
-    const saleProductSelect = document.getElementById('sale-product');
-    if (saleProductSelect) {
-        console.log('Satış ürün select bulundu, yeni ürün ekleniyor:', newProduct);
-        
-        // Önce mevcut seçenekleri temizle
-        saleProductSelect.innerHTML = '<option value="">Ürün seçin...</option>';
-        
-        // Tüm aktif ürünleri yeniden yükle
-        if (typeof loadProductsForSale === 'function') {
-            loadProductsForSale().then(() => {
-                // Yeni eklenen ürünü seç
-                saleProductSelect.value = newProduct.id;
-                console.log('Yeni ürün seçildi:', saleProductSelect.value);
-                
-                // Change event'ini tetikle (fiyat güncellemesi için)
-                const changeEvent = new Event('change', { bubbles: true });
-                saleProductSelect.dispatchEvent(changeEvent);
-                
-                console.log('Satış ekranındaki ürün seçimi güncellendi:', newProduct.name);
-            });
-        } else {
-            // Fallback: Sadece yeni ürünü ekle
-            const newOption = document.createElement('option');
-            newOption.value = newProduct.id;
-            newOption.textContent = `${newProduct.name} - ₺${newProduct.sale_price}`;
-            saleProductSelect.appendChild(newOption);
-            
-            // Yeni eklenen ürünü seç
-            saleProductSelect.value = newProduct.id;
-            console.log('Yeni ürün seçildi (fallback):', saleProductSelect.value);
-            
-            // Change event'ini tetikle
-            const changeEvent = new Event('change', { bubbles: true });
-            saleProductSelect.dispatchEvent(changeEvent);
-        }
+// 🎯 PLACEHOLDER FONKSİYONLAR (Diğer modüllerle entegrasyon için)
+function showAddProductModal() {
+    // Bu fonksiyon renderer.js'de tanımlı olacak
+    if (typeof window.showAddProductModalFromRenderer === 'function') {
+        window.showAddProductModalFromRenderer();
     } else {
-        console.warn('Satış ürün select bulunamadı');
+        showNotification('Ürün ekleme modülü henüz aktif değil', 'warning');
     }
 }
 
-// Satış ekranındaki ürün seçimini güncelle (ürün silme sonrası)
-function updateSaleProductSelectAfterDelete(deletedProductId) {
-    const saleProductSelect = document.getElementById('sale-product');
-    if (saleProductSelect) {
-        console.log('Satış ürün select bulundu, silinen ürün kaldırılıyor:', deletedProductId);
+function editProduct(id) {
+    // Bu fonksiyon renderer.js'de tanımlı olacak
+    if (typeof window.editProductFromRenderer === 'function') {
+        window.editProductFromRenderer(id);
+    } else {
+        showNotification('Ürün düzenleme modülü henüz aktif değil', 'warning');
+    }
+}
+
+function deleteProduct(id) {
+    // Bu fonksiyon renderer.js'de tanımlı olacak
+    if (typeof window.deleteProductFromRenderer === 'function') {
+        window.deleteProductFromRenderer(id);
+    } else {
+        showNotification('Ürün silme modülü henüz aktif değil', 'warning');
+    }
+}
+
+function showCategoriesModal() {
+    // Bu fonksiyon renderer.js'de tanımlı olacak
+    if (typeof window.showCategoriesModalFromRenderer === 'function') {
+        window.showCategoriesModalFromRenderer();
+    } else {
+        showNotification('Kategori modülü henüz aktif değil', 'warning');
+    }
+}
+
+function showBrandsModal() {
+    // Bu fonksiyon renderer.js'de tanımlı olacak
+    if (typeof window.showBrandsModalFromRenderer === 'function') {
+        window.showBrandsModalFromRenderer();
+    } else {
+        showNotification('Marka modülü henüz aktif değil', 'warning');
+    }
+}
+
+function showBulkOperationsModal() {
+    // Bu fonksiyon renderer.js'de tanımlı olacak
+    if (typeof window.showBulkOperationsModalFromRenderer === 'function') {
+        window.showBulkOperationsModalFromRenderer();
+    } else {
+        showNotification('Toplu işlemler modülü henüz aktif değil', 'warning');
+    }
+}
+
+// 🌐 GLOBAL FONKSİYONLAR
+window.showProductManagementModule = showProductManagement;
+window.showDashboard = showDashboard;
+window.showListView = showListView;
+// window.showGridView = showGridView; // Removed - function no longer exists
+window.filterProducts = filterProducts;
+window.filterProductsGrid = filterProductsGrid;
+window.clearFilters = clearFilters;
+window.clearFiltersGrid = clearFiltersGrid;
+window.toggleProductSelection = toggleProductSelection;
+window.toggleSelectAll = toggleSelectAll;
+window.showExcelImportModal = showExcelImportModal;
+window.exportProductsToExcel = exportProductsToExcel;
+window.handleExcelFileSelect = handleExcelFileSelect;
+window.importProductsFromExcel = importProductsFromExcel;
+window.closeProductModal = closeProductModal;
+window.handleProductModalKeydown = handleProductModalKeydown;
+
+// Hızlı ekleme fonksiyonları - renderer.js'de kullanılabilir
+window.showAddCategoryModalFromProductModule = showAddCategoryModal;
+window.showAddBrandModalFromProductModule = showAddBrandModal;
+
+// 📁 KATEGORİ EKLEME MODALI
+function showAddCategoryModal() {
+    const modalHtml = `
+        <div id="add-category-modal" class="modal active" style="z-index: 9999;">
+            <div class="modal-content" style="max-width: 500px; border-radius: 16px;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px; border-radius: 16px 16px 0 0; color: white;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin: 0; font-size: 24px; font-weight: 700;">📁 Yeni Kategori</h3>
+                        <button onclick="closeAddCategoryModal()" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 20px;">×</button>
+                    </div>
+                </div>
+                
+                <div style="padding: 24px;">
+                    <form id="add-category-form">
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Kategori Adı</label>
+                            <input type="text" id="category-name" required 
+                                   style="width: 100%; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 12px; font-size: 16px; outline: none; transition: all 0.2s;"
+                                   placeholder="Kategori adını girin"
+                                   onfocus="this.style.borderColor='#667eea'" 
+                                   onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                        
+                        <div style="margin-bottom: 24px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Açıklama (Opsiyonel)</label>
+                            <textarea id="category-description" rows="3"
+                                      style="width: 100%; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 12px; font-size: 16px; outline: none; transition: all 0.2s; resize: vertical;"
+                                      placeholder="Kategori açıklaması"
+                                      onfocus="this.style.borderColor='#667eea'" 
+                                      onblur="this.style.borderColor='#e5e7eb'"></textarea>
+                        </div>
+                        
+                        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                            <button type="button" onclick="closeAddCategoryModal()" 
+                                    style="padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; color: #374151; transition: all 0.2s;">
+                                İptal
+                            </button>
+                            <button type="submit" 
+                                    style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; transition: all 0.2s;">
+                                ➕ Kategori Ekle
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Form submit handler
+    document.getElementById('add-category-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
         
-        // Eğer silinen ürün seçiliyse, seçimi temizle
-        if (saleProductSelect.value == deletedProductId) {
-            saleProductSelect.value = '';
-            // Form alanlarını temizle
-            const saleAmount = document.getElementById('sale-amount');
-            const saleDescription = document.getElementById('sale-description');
-            if (saleAmount) saleAmount.value = '';
-            if (saleDescription) saleDescription.value = '';
+        const name = document.getElementById('category-name').value.trim();
+        const description = document.getElementById('category-description').value.trim();
+        
+        if (!name) {
+            showNotification('Kategori adı gereklidir', 'error');
+            return;
         }
         
-        // Silinen ürünü seçeneklerden kaldır
-        const optionToRemove = saleProductSelect.querySelector(`option[value="${deletedProductId}"]`);
-        if (optionToRemove) {
-            optionToRemove.remove();
+        try {
+            const result = await ipcRenderer.invoke('add-category', { name, description });
+            
+            if (result && result.id) {
+                showNotification('Kategori başarıyla eklendi', 'success');
+                closeAddCategoryModal();
+                
+                console.log('🔄 Kategori eklendi, veriler yenileniyor...');
+                // Kategorileri yeniden yükle
+                await loadCategoriesData();
+                console.log('📊 Kategoriler yeniden yüklendi, liste güncelleniyor...');
+                
+                // Kategori listesini yenile
+                refreshCategoryList();
+                
+                // Ürün ekleme modalındaki kategori select'ini güncelle ve yeni kategoriyi seç
+                updateCategorySelect();
+                updateProductCategorySelect(result.id);
+                
+                // Dashboard'ı yenile (eğer dashboard görünümündeyse)
+                if (currentView === 'dashboard') {
+                    showDashboard();
+                }
+            } else {
+                showNotification('Kategori eklenirken hata oluştu', 'error');
+            }
+        } catch (error) {
+            console.error('Kategori ekleme hatası:', error);
+            showNotification('Kategori eklenirken hata oluştu', 'error');
+        }
+    });
+}
+
+// 🏷️ MARKA EKLEME MODALI
+function showAddBrandModal() {
+    const modalHtml = `
+        <div id="add-brand-modal" class="modal active" style="z-index: 9999;">
+            <div class="modal-content" style="max-width: 500px; border-radius: 16px;">
+                <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 24px; border-radius: 16px 16px 0 0; color: white;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin: 0; font-size: 24px; font-weight: 700;">🏷️ Yeni Marka</h3>
+                        <button onclick="closeAddBrandModal()" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 20px;">×</button>
+                    </div>
+                </div>
+                
+                <div style="padding: 24px;">
+                    <form id="add-brand-form">
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Marka Adı</label>
+                            <input type="text" id="brand-name" required 
+                                   style="width: 100%; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 12px; font-size: 16px; outline: none; transition: all 0.2s;"
+                                   placeholder="Marka adını girin"
+                                   onfocus="this.style.borderColor='#10b981'" 
+                                   onblur="this.style.borderColor='#e5e7eb'">
+                        </div>
+                        
+                        <div style="margin-bottom: 24px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Açıklama (Opsiyonel)</label>
+                            <textarea id="brand-description" rows="3"
+                                      style="width: 100%; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 12px; font-size: 16px; outline: none; transition: all 0.2s; resize: vertical;"
+                                      placeholder="Marka açıklaması"
+                                      onfocus="this.style.borderColor='#10b981'" 
+                                      onblur="this.style.borderColor='#e5e7eb'"></textarea>
+                        </div>
+                        
+                        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                            <button type="button" onclick="closeAddBrandModal()" 
+                                    style="padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; color: #374151; transition: all 0.2s;">
+                                İptal
+                            </button>
+                            <button type="submit" 
+                                    style="padding: 12px 24px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; transition: all 0.2s;">
+                                ➕ Marka Ekle
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Form submit handler
+    document.getElementById('add-brand-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const name = document.getElementById('brand-name').value.trim();
+        const description = document.getElementById('brand-description').value.trim();
+        
+        if (!name) {
+            showNotification('Marka adı gereklidir', 'error');
+            return;
         }
         
-        // Tüm aktif ürünleri yeniden yükle (sadece satış ekranı için)
-        if (typeof loadProductsForSale === 'function') {
-            loadProductsForSale().then(() => {
-                console.log('Satış ekranındaki ürün listesi güncellendi (silinen ürün kaldırıldı)');
-            });
+        try {
+            const result = await ipcRenderer.invoke('add-brand', { name, description });
+            
+            if (result && result.id) {
+                showNotification('Marka başarıyla eklendi', 'success');
+                closeAddBrandModal();
+                
+                console.log('🔄 Marka eklendi, veriler yenileniyor...');
+                // Markaları yeniden yükle
+                await loadBrandsData();
+                console.log('📊 Markalar yeniden yüklendi, liste güncelleniyor...');
+                
+                // Marka listesini yenile
+                refreshBrandList();
+                
+                // Ürün ekleme modalındaki marka select'ini güncelle ve yeni markayı seç
+                updateBrandSelect();
+                updateProductBrandSelect(result.id);
+                
+                // Dashboard'ı yenile (eğer dashboard görünümündeyse)
+                if (currentView === 'dashboard') {
+                    showDashboard();
+                }
+            } else {
+                showNotification('Marka eklenirken hata oluştu', 'error');
+            }
+        } catch (error) {
+            console.error('Marka ekleme hatası:', error);
+            showNotification('Marka eklenirken hata oluştu', 'error');
+        }
+    });
+}
+
+// Modal kapatma fonksiyonları
+function closeAddCategoryModal() {
+    const modal = document.getElementById('add-category-modal');
+    if (modal) modal.remove();
+}
+
+function closeAddBrandModal() {
+    const modal = document.getElementById('add-brand-modal');
+    if (modal) modal.remove();
+}
+
+// Select güncelleme fonksiyonları
+function updateCategorySelect() {
+    const categorySelect = document.getElementById('product-category');
+    if (categorySelect) {
+        categorySelect.innerHTML = '<option value="">Kategori Seçin</option>' + 
+            categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    }
+}
+
+function updateBrandSelect() {
+    const brandSelect = document.getElementById('product-brand');
+    if (brandSelect) {
+        brandSelect.innerHTML = '<option value="">Marka Seçin</option>' + 
+            brands.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+    }
+}
+
+// 🔄 ÜRÜN EKLEME MODALI SELECT GÜNCELLEME FONKSİYONLARI
+function updateProductCategorySelect(selectedCategoryId = null) {
+    const productCategorySelect = document.getElementById('product-category');
+    const editProductCategorySelect = document.getElementById('edit-product-category');
+    
+    if (productCategorySelect) {
+        // Mevcut seçenekleri temizle (ilk seçenek hariç)
+        while (productCategorySelect.children.length > 1) {
+            productCategorySelect.removeChild(productCategorySelect.lastChild);
+        }
+        
+        // Yeni kategorileri ekle
+        categories.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category.id;
+            option.textContent = category.name;
+            if (selectedCategoryId && category.id === selectedCategoryId) {
+                option.selected = true;
+            }
+            productCategorySelect.appendChild(option);
+        });
+        
+        console.log('✅ Ürün ekleme modalı kategori select güncellendi');
+    }
+    
+    if (editProductCategorySelect) {
+        // Mevcut seçenekleri temizle (ilk seçenek hariç)
+        while (editProductCategorySelect.children.length > 1) {
+            editProductCategorySelect.removeChild(editProductCategorySelect.lastChild);
+        }
+        
+        // Yeni kategorileri ekle
+        categories.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category.id;
+            option.textContent = category.name;
+            if (selectedCategoryId && category.id === selectedCategoryId) {
+                option.selected = true;
+            }
+            editProductCategorySelect.appendChild(option);
+        });
+        
+        console.log('✅ Ürün düzenleme modalı kategori select güncellendi');
+    }
+}
+
+function updateProductBrandSelect(selectedBrandId = null) {
+    const productBrandSelect = document.getElementById('product-brand');
+    const editProductBrandSelect = document.getElementById('edit-product-brand');
+    
+    if (productBrandSelect) {
+        // Mevcut seçenekleri temizle (ilk seçenek hariç)
+        while (productBrandSelect.children.length > 1) {
+            productBrandSelect.removeChild(productBrandSelect.lastChild);
+        }
+        
+        // Yeni markaları ekle
+        brands.forEach(brand => {
+            const option = document.createElement('option');
+            option.value = brand.id;
+            option.textContent = brand.name;
+            if (selectedBrandId && brand.id === selectedBrandId) {
+                option.selected = true;
+            }
+            productBrandSelect.appendChild(option);
+        });
+        
+        console.log('✅ Ürün ekleme modalı marka select güncellendi');
+    }
+    
+    if (editProductBrandSelect) {
+        // Mevcut seçenekleri temizle (ilk seçenek hariç)
+        while (editProductBrandSelect.children.length > 1) {
+            editProductBrandSelect.removeChild(editProductBrandSelect.lastChild);
+        }
+        
+        // Yeni markaları ekle
+        brands.forEach(brand => {
+            const option = document.createElement('option');
+            option.value = brand.id;
+            option.textContent = brand.name;
+            if (selectedBrandId && brand.id === selectedBrandId) {
+                option.selected = true;
+            }
+            editProductBrandSelect.appendChild(option);
+        });
+        
+        console.log('✅ Ürün düzenleme modalı marka select güncellendi');
+    }
+}
+
+// Bildirim fonksiyonu
+function showNotification(message, type = 'info') {
+    // Basit bildirim sistemi
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 16px 24px;
+        border-radius: 12px;
+        color: white;
+        font-weight: 600;
+        z-index: 10000;
+        max-width: 400px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        transform: translateX(100%);
+        transition: transform 0.3s ease;
+    `;
+    
+    const colors = {
+        success: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+        error: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+        warning: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+        info: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
+    };
+    
+    notification.style.background = colors[type] || colors.info;
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    // Animasyon
+    setTimeout(() => {
+        notification.style.transform = 'translateX(0)';
+    }, 100);
+    
+    // Otomatik kaldırma
+    setTimeout(() => {
+        notification.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }, 3000);
+}
+
+// 📊 VERİTABANINDAN VERİ ÇEKME FONKSİYONLARI
+async function loadCategoriesData() {
+    try {
+        const categoriesData = await ipcRenderer.invoke('get-categories');
+        categories.length = 0; // Mevcut verileri temizle
+        categories.push(...categoriesData); // Yeni verileri ekle
+        window.categories = categories; // Global referansı güncelle
+        console.log('Kategoriler yüklendi:', categories.length);
+        return categories;
+    } catch (error) {
+        console.error('Kategoriler yüklenirken hata:', error);
+        return [];
+    }
+}
+
+async function loadBrandsData() {
+    try {
+        const brandsData = await ipcRenderer.invoke('get-brands');
+        brands.length = 0; // Mevcut verileri temizle
+        brands.push(...brandsData); // Yeni verileri ekle
+        window.brands = brands; // Global referansı güncelle
+        console.log('Markalar yüklendi:', brands.length);
+        return brands;
+    } catch (error) {
+        console.error('Markalar yüklenirken hata:', error);
+        return [];
+    }
+}
+
+async function loadProductsData() {
+    try {
+        const productsData = await ipcRenderer.invoke('get-products');
+        products.length = 0; // Mevcut verileri temizle
+        products.push(...productsData); // Yeni verileri ekle
+        window.products = products; // Global referansı güncelle
+        console.log('Ürünler yüklendi:', products.length);
+        return products;
+    } catch (error) {
+        console.error('Ürünler yüklenirken hata:', error);
+        return [];
+    }
+}
+
+// 🔄 KATEGORİ LİSTESİNİ YENİLEME FONKSİYONU
+function refreshCategoryList() {
+    // Kategori yönetimi modalı açık mı kontrol et
+    const categoryModal = document.getElementById('categories-modal');
+    if (categoryModal) {
+        console.log('🔄 Kategori modalı bulundu, liste güncelleniyor...');
+        
+        // Modal içindeki kategori listesini bul - daha geniş selector
+        const categoryList = categoryModal.querySelector('.category-list, .modal-body, tbody, table, .list-container, [class*="list"], [class*="table"]');
+        
+        if (categoryList) {
+            console.log('📋 Liste elementi bulundu:', categoryList.tagName, categoryList.className);
+            
+            // Yeni kategori listesini oluştur - modal'ın gerçek yapısına uygun
+            const newListHtml = categories.map(category => `
+                <tr style="border-bottom: 1px solid #f3f4f6;">
+                    <td style="padding: 12px; font-weight: 500;">${category.name}</td>
+                    <td style="padding: 12px; text-align: center;">
+                        <button onclick="editCategory(${category.id})" style="background: #f3f4f6; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Düzenle</button>
+                        <button onclick="deleteCategory(${category.id})" style="background: #fef2f2; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; color: #dc2626;">Sil</button>
+                    </td>
+                </tr>
+            `).join('');
+            
+            // Listeyi güncelle
+            if (categoryList.tagName === 'TBODY') {
+                categoryList.innerHTML = newListHtml;
+                console.log('✅ Tbody güncellendi');
+            } else if (categoryList.tagName === 'TABLE') {
+                // TABLE elementi bulunduysa, tbody'yi bul ve güncelle
+                const tbody = categoryList.querySelector('tbody');
+                if (tbody) {
+                    tbody.innerHTML = newListHtml;
+                    console.log('✅ Tablo tbody güncellendi');
+                } else {
+                    // Tbody yoksa, tam tablo oluştur
+                    categoryList.innerHTML = `
+                        <thead style="background: #f9fafb;">
+                            <tr>
+                                <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">Kategori Adı</th>
+                                <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151;">İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${newListHtml}
+                        </tbody>
+                    `;
+                    console.log('✅ Tablo tamamen güncellendi');
+                }
+            } else {
+                // Genel container için - modal'ın gerçek yapısına uygun
+                categoryList.innerHTML = `
+                    <div style="background: white; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead style="background: #f9fafb;">
+                                <tr>
+                                    <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">Kategori Adı</th>
+                                    <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151;">İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${newListHtml}
+                            </tbody>
+                        </table>
+                        ${categories.length === 0 ? '<div style="text-align: center; padding: 40px; color: #9ca3af;">Henüz kategori eklenmemiş</div>' : ''}
+                    </div>
+                `;
+                console.log('✅ Container güncellendi');
+            }
+        } else {
+            console.log('❌ Liste elementi bulunamadı, modal içeriği:', categoryModal.innerHTML.substring(0, 200));
         }
     } else {
-        console.warn('Satış ürün select bulunamadı');
+        console.log('❌ Kategori modalı bulunamadı');
+    }
+}
+
+// 🔄 MARKA LİSTESİNİ YENİLEME FONKSİYONU
+function refreshBrandList() {
+    // Marka yönetimi modalı açık mı kontrol et
+    const brandModal = document.getElementById('brands-modal');
+    if (brandModal) {
+        console.log('🔄 Marka modalı bulundu, liste güncelleniyor...');
+        
+        // Modal içindeki marka listesini bul - daha geniş selector
+        const brandList = brandModal.querySelector('.brand-list, .modal-body, tbody, table, .list-container, [class*="list"], [class*="table"]');
+        
+        if (brandList) {
+            console.log('📋 Liste elementi bulundu:', brandList.tagName, brandList.className);
+            
+            // Yeni marka listesini oluştur - modal'ın gerçek yapısına uygun
+            const newListHtml = brands.map(brand => `
+                <tr style="border-bottom: 1px solid #f3f4f6;">
+                    <td style="padding: 12px; font-weight: 500;">${brand.name}</td>
+                    <td style="padding: 12px; text-align: center;">
+                        <button onclick="editBrand(${brand.id})" style="background: #f3f4f6; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Düzenle</button>
+                        <button onclick="deleteBrand(${brand.id})" style="background: #fef2f2; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; color: #dc2626;">Sil</button>
+                    </td>
+                </tr>
+            `).join('');
+            
+            // Listeyi güncelle
+            if (brandList.tagName === 'TBODY') {
+                brandList.innerHTML = newListHtml;
+                console.log('✅ Tbody güncellendi');
+            } else if (brandList.tagName === 'TABLE') {
+                // TABLE elementi bulunduysa, tbody'yi bul ve güncelle
+                const tbody = brandList.querySelector('tbody');
+                if (tbody) {
+                    tbody.innerHTML = newListHtml;
+                    console.log('✅ Tablo tbody güncellendi');
+                } else {
+                    // Tbody yoksa, tam tablo oluştur
+                    brandList.innerHTML = `
+                        <thead style="background: #f9fafb;">
+                            <tr>
+                                <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">Marka Adı</th>
+                                <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151;">İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${newListHtml}
+                        </tbody>
+                    `;
+                    console.log('✅ Tablo tamamen güncellendi');
+                }
+            } else {
+                // Genel container için - modal'ın gerçek yapısına uygun
+                brandList.innerHTML = `
+                    <div style="background: white; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead style="background: #f9fafb;">
+                                <tr>
+                                    <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">Marka Adı</th>
+                                    <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151;">İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${newListHtml}
+                            </tbody>
+                        </table>
+                        ${brands.length === 0 ? '<div style="text-align: center; padding: 40px; color: #9ca3af;">Henüz marka eklenmemiş</div>' : ''}
+                    </div>
+                `;
+                console.log('✅ Container güncellendi');
+            }
+        } else {
+            console.log('❌ Liste elementi bulunamadı, modal içeriği:', brandModal.innerHTML.substring(0, 200));
+        }
+    } else {
+        console.log('❌ Marka modalı bulunamadı');
+    }
+}
+
+// 🗑️ KATEGORİ SİLME FONKSİYONU
+async function deleteCategory(categoryId) {
+    if (!categoryId) {
+        showNotification('Kategori ID bulunamadı', 'error');
+        return;
+    }
+    
+    // Kategori kullanımda mı kontrol et
+    const categoryInUse = products.some(p => p.category_id === categoryId);
+    if (categoryInUse) {
+        showNotification('Bu kategori kullanımda olduğu için silinemez', 'error');
+        return;
+    }
+    
+    if (confirm('Bu kategoriyi silmek istediğinizden emin misiniz?')) {
+        try {
+            const result = await ipcRenderer.invoke('delete-category', categoryId);
+            
+            if (result && result.success !== false) {
+                showNotification('Kategori başarıyla silindi', 'success');
+                
+                console.log('🔄 Kategori silindi, veriler yenileniyor...');
+                // Kategorileri yeniden yükle
+                await loadCategoriesData();
+                console.log('📊 Kategoriler yeniden yüklendi, liste güncelleniyor...');
+                
+                // Kategori modalı açıksa yeniden oluştur
+                const categoryModal = document.getElementById('categories-modal');
+                if (categoryModal) {
+                    console.log('🔄 Kategori modalı yeniden oluşturuluyor...');
+                    categoryModal.remove();
+                    showCategoriesModal();
+                }
+                
+                // Ürün ekleme modalındaki kategori select'ini güncelle
+                updateCategorySelect();
+                
+                // Eğer dashboard görünümündeyse yenile
+                if (currentView === 'dashboard') {
+                    showDashboard();
+                }
+            } else {
+                showNotification('Kategori silinirken hata oluştu', 'error');
+            }
+        } catch (error) {
+            console.error('Kategori silme hatası:', error);
+            showNotification('Kategori silinirken hata oluştu', 'error');
+        }
+    }
+}
+
+// 🗑️ MARKA SİLME FONKSİYONU
+async function deleteBrand(brandId) {
+    if (!brandId) {
+        showNotification('Marka ID bulunamadı', 'error');
+        return;
+    }
+    
+    // Marka kullanımda mı kontrol et
+    const brandInUse = products.some(p => p.brand_id === brandId);
+    if (brandInUse) {
+        showNotification('Bu marka kullanımda olduğu için silinemez', 'error');
+        return;
+    }
+    
+    if (confirm('Bu markayı silmek istediğinizden emin misiniz?')) {
+        try {
+            const result = await ipcRenderer.invoke('delete-brand', brandId);
+            
+            if (result && result.success !== false) {
+                showNotification('Marka başarıyla silindi', 'success');
+                
+                // Markaları yeniden yükle
+                await loadBrandsData();
+                
+                // Marka modalı açıksa yeniden oluştur
+                const brandModal = document.getElementById('brands-modal');
+                if (brandModal) {
+                    console.log('🔄 Marka modalı yeniden oluşturuluyor...');
+                    brandModal.remove();
+                    showBrandsModal();
+                }
+                
+                // Ürün ekleme modalındaki marka select'ini güncelle
+                updateBrandSelect();
+                
+                // Eğer dashboard görünümündeyse yenile
+                if (currentView === 'dashboard') {
+                    showDashboard();
+                }
+            } else {
+                showNotification('Marka silinirken hata oluştu', 'error');
+            }
+        } catch (error) {
+            console.error('Marka silme hatası:', error);
+            showNotification('Marka silinirken hata oluştu', 'error');
+        }
+    }
+}
+
+// Ürün listesini yenile
+async function refreshProductList() {
+    try {
+        console.log('🔄 Ürün listesi yenileniyor...');
+        await loadProductsData();
+        
+        // Eğer liste görünümündeyse yenile
+        if (currentView === 'list') {
+            showListView();
+        }
+        
+        console.log('✅ Ürün listesi yenilendi');
+    } catch (error) {
+        console.error('Ürün listesi yenilenemedi:', error);
     }
 }
 
 // Global fonksiyonlar
-window.showProductManagement = showProductManagement;
-window.showProductModalFromSale = showProductModalFromSale;
-window.showProductModal = showProductModal;
-window.handleAddProduct = handleAddProduct;
-window.showCategoriesModal = showCategoriesModal;
-window.showBrandsModal = showBrandsModal;
 window.showAddCategoryModal = showAddCategoryModal;
-window.updateSaleProductSelect = updateSaleProductSelect;
-window.updateSaleProductSelectAfterDelete = updateSaleProductSelectAfterDelete;
 window.showAddBrandModal = showAddBrandModal;
-window.handleAddCategory = handleAddCategory;
-window.handleAddBrand = handleAddBrand;
+window.closeAddCategoryModal = closeAddCategoryModal;
+window.closeAddBrandModal = closeAddBrandModal;
+window.showNotification = showNotification;
 window.deleteCategory = deleteCategory;
 window.deleteBrand = deleteBrand;
-window.editCategory = editCategory;
-window.editBrand = editBrand;
-window.handleEditBrand = handleEditBrand;
-window.closeProductModal = closeProductModal;
-window.handleProductModalKeydown = handleProductModalKeydown;
-window.showQuickAddCategoryFromProduct = showQuickAddCategoryFromProduct;
-window.showQuickAddBrandFromProduct = showQuickAddBrandFromProduct;
-window.handleQuickAddCategoryFromProduct = handleQuickAddCategoryFromProduct;
-window.handleQuickAddBrandFromProduct = handleQuickAddBrandFromProduct;
+window.refreshCategoryList = refreshCategoryList;
+window.refreshBrandList = refreshBrandList;
+window.refreshProductList = refreshProductList;
 
+console.log('🚀 Modern Ürün Yönetim Modülü v2.0 yüklendi!');
