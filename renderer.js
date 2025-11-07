@@ -49,7 +49,10 @@ if (typeof window.electronAPI === 'undefined') {
         getCurrentUser: (sessionToken) => window.ipcRenderer.invoke('get-current-user', sessionToken),
         // İlk kurulum APIs
         checkFirstTimeSetup: () => window.ipcRenderer.invoke('check-first-time-setup'),
-        registerFirstUser: (userData) => window.ipcRenderer.invoke('register-first-user', userData)
+        registerFirstUser: (userData) => window.ipcRenderer.invoke('register-first-user', userData),
+        // Kategori ve Marka APIs
+        getAllCategories: () => window.ipcRenderer.invoke('get-all-categories'),
+        getAllBrands: () => window.ipcRenderer.invoke('get-all-brands')
     };
 }
 
@@ -4342,8 +4345,8 @@ async function deleteProduct(productId) {
 
 // ESKİ ÜRÜN EKLEME MODAL'I KALDIRILDI - product-module.js kullanılıyor
 
-// Ürünleri Excel'e aktar
-async function exportProductsToExcel() {
+// Ürünleri Excel'e aktar (CSV çıktısı)
+async function generateProductsExcel() {
     try {
         const products = await window.ipcRenderer.invoke('get-products');
         
@@ -9128,6 +9131,33 @@ function showAddProductModal() {
     }
 }
 
+// Satış ekranından ürün ekleme modalını aç
+function showProductModalFromSale() {
+    try {
+        // Önce ürün ekleme modalını doğrudan açmayı dene
+        if (typeof showAddProductModal === 'function') {
+            showAddProductModal();
+            return;
+        }
+
+        // Alternatif: Ürün yönetimi modülünü açıp ardından ekleme modalını tetikle
+        if (typeof window.showProductManagementModule === 'function') {
+            window.showProductManagementModule();
+            setTimeout(() => {
+                if (typeof showAddProductModal === 'function') {
+                    showAddProductModal();
+                }
+            }, 250);
+            return;
+        }
+
+        showMessage('Ürün ekleme modülü henüz aktif değil', 'warning');
+    } catch (error) {
+        console.error('showProductModalFromSale hata:', error);
+        showMessage('Ürün ekleme ekranı açılırken hata oluştu', 'error');
+    }
+}
+
 // Eski ürün ekleme modalı (fallback)
 function showAddProductModalLegacy() {
     const modalHtml = `
@@ -9240,6 +9270,7 @@ function showAddProductModalLegacy() {
                                     onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
                                 <option value="0">%0</option>
                                 <option value="1">%1</option>
+                                <option value="10">%10</option>
                                 <option value="8">%8</option>
                                 <option value="18">%18</option>
                                 <option value="20" selected>%20 (Standart)</option>
@@ -9409,11 +9440,21 @@ async function deleteProductLegacy(id) {
 
 // Excel aktarma
 function exportProductsToExcel() {
-    if (typeof window.exportProductsToExcel === 'function') {
-        window.exportProductsToExcel();
-    } else {
-        showMessage('Excel aktarma modülü henüz aktif değil', 'warning');
+    if (exportProductsToExcel._isRunning) {
+        console.warn('exportProductsToExcel zaten çalışıyor, çağrı yoksayıldı');
+        return;
     }
+
+    exportProductsToExcel._isRunning = true;
+
+    generateProductsExcel()
+        .catch(error => {
+            console.error('exportProductsToExcel hata:', error);
+            showMessage('Excel aktarımı başlatılamadı', 'error');
+        })
+        .finally(() => {
+            exportProductsToExcel._isRunning = false;
+        });
 }
 
 // Yazdırma
@@ -9563,6 +9604,7 @@ window.editProductFromRenderer = function(id) {
                                     onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e5e7eb'">
                                 <option value="0" ${product.vat_rate === 0 ? 'selected' : ''}>%0</option>
                                 <option value="1" ${product.vat_rate === 1 ? 'selected' : ''}>%1</option>
+                                <option value="10" ${product.vat_rate === 10 ? 'selected' : ''}>%10</option>
                                 <option value="8" ${product.vat_rate === 8 ? 'selected' : ''}>%8</option>
                                 <option value="18" ${product.vat_rate === 18 ? 'selected' : ''}>%18</option>
                                 <option value="20" ${product.vat_rate === 20 ? 'selected' : ''}>%20 (Standart)</option>
@@ -9764,10 +9806,58 @@ window.showBrandsModalFromRenderer = function() {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 };
 
-// Toplu işlemler modalını renderer'dan çağır
-window.showBulkOperationsModalFromRenderer = function() {
-    showMessage('Toplu işlemler modülü henüz aktif değil', 'warning');
-};
+// Excel işlemleri modalını renderer'dan çağır
+        window.showExcelOperationsModalFromRenderer = function() {
+            const modalHtml = `
+                <div id="excel-operations-modal" class="modal active" style="z-index: 15000;">
+                    <div class="modal-content" style="max-width: 500px;">
+                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px; border-radius: 16px 16px 0 0; color: white;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <h3 style="margin: 0; font-size: 24px; font-weight: 700;">📊 Excel İşlemleri</h3>
+                                <button onclick="closeProductModal('excel-operations-modal')" 
+                                        style="background: rgba(255,255,255,0.2); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 20px; transition: all 0.3s;"
+                                        onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
+                                        onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+                                    ×
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div style="padding: 24px;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px;">
+                                <button onclick="showExcelImportModal()" 
+                                        style="background: white; border: 2px solid #e5e7eb; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; color: #374151; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 12px;"
+                                        onmouseover="this.style.borderColor='#f59e0b'; this.style.boxShadow='0 8px 25px rgba(245, 158, 11, 0.3)'" 
+                                        onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+                                    <span style="font-size: 32px;">📥</span>
+                                    <span>Excel Import</span>
+                                    <span style="font-size: 12px; color: #6b7280;">Toplu ürün yükleme</span>
+                                </button>
+                                <button onclick="showExcelCustomerImportModal()" 
+                                        style="background: white; border: 2px solid #e5e7eb; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; color: #374151; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 12px;"
+                                        onmouseover="this.style.borderColor='#10b981'; this.style.boxShadow='0 8px 25px rgba(16, 185, 129, 0.3)'" 
+                                        onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+                                    <span style="font-size: 32px;">👥</span>
+                                    <span>Müşteri Import</span>
+                                    <span style="font-size: 12px; color: #6b7280;">Toplu müşteri yükleme</span>
+                                </button>
+                                
+                                <button onclick="exportProductsToExcel()" 
+                                        style="background: white; border: 2px solid #e5e7eb; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; color: #374151; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 12px;"
+                                        onmouseover="this.style.borderColor='#0ea5e9'; this.style.boxShadow='0 8px 25px rgba(14, 165, 233, 0.3)'" 
+                                        onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+                                    <span style="font-size: 32px;">📤</span>
+                                    <span>Excel Export</span>
+                                    <span style="font-size: 12px; color: #6b7280;">Ürünleri Excel'e aktar</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        };
 
 // Modal kapatma fonksiyonu
 function closeProductModal(modalId) {

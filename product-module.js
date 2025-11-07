@@ -30,6 +30,10 @@ window.products = products;
 window.categories = categories;
 window.brands = brands;
 
+function isProductModalOpen() {
+    return !!document.getElementById('product-management-modal');
+}
+
 // 🎯 ANA MODAL AÇMA FONKSİYONU
 async function showProductManagement() {
     try {
@@ -89,20 +93,20 @@ function createModernProductModal() {
                             </p>
                         </div>
                         <div style="display: flex; gap: 16px; align-items: center;">
-                            <button onclick="showExcelImportModal()" 
-                                    style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 12px 20px; border-radius: 12px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s; display: flex; align-items: center; gap: 8px; backdrop-filter: blur(10px);"
-                                    onmouseover="this.style.background='rgba(255,255,255,0.3)'; this.style.transform='translateY(-2px)'" 
-                                    onmouseout="this.style.background='rgba(255,255,255,0.2)'; this.style.transform='translateY(0)'" 
-                                    title="Excel ile Toplu Ürün Yükle">
-                                📊 Excel Import
+                            <button onclick="showAddProductModal()"
+                                    style="background: rgba(255,255,255,0.25); border: none; color: white; padding: 12px 24px; border-radius: 25px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s; backdrop-filter: blur(10px); display: flex; align-items: center; gap: 8px;"
+                                    onmouseover="this.style.background='rgba(255,255,255,0.35)'"
+                                    onmouseout="this.style.background='rgba(255,255,255,0.25)'"
+                                    title="Yeni Ürün Ekle">
+                                ➕ Yeni Ürün
                             </button>
-                            <button onclick="exportProductsToExcel()" 
-                                    style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 12px 20px; border-radius: 12px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s; display: flex; align-items: center; gap: 8px; backdrop-filter: blur(10px);"
-                                    onmouseover="this.style.background='rgba(255,255,255,0.3)'; this.style.transform='translateY(-2px)'" 
-                                    onmouseout="this.style.background='rgba(255,255,255,0.2)'; this.style.transform='translateY(0)'" 
-                                    title="Ürünleri Excel'e Aktar">
-                                📤 Excel Export
-                            </button>
+                        <button onclick="showExcelOperationsModalFromRenderer()" 
+                                style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 12px 20px; border-radius: 25px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s; backdrop-filter: blur(10px); display: flex; align-items: center; gap: 8px;"
+                                onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
+                                onmouseout="this.style.background='rgba(255,255,255,0.2)'"
+                                title="Toplu İşlemler">
+                            📊 Toplu İşlemler
+                        </button>
                             <button onclick="event.stopPropagation(); closeProductModal('product-management-modal')" 
                                     style="background: rgba(255,255,255,0.2); border: none; color: white; width: 48px; height: 48px; border-radius: 50%; cursor: pointer; font-size: 24px; transition: all 0.3s; z-index: 1001; position: relative; backdrop-filter: blur(10px);"
                                     onmouseover="this.style.background='rgba(255,255,255,0.3)'; this.style.transform='rotate(90deg)'" 
@@ -197,43 +201,6 @@ function showDashboard() {
                 </div>
             </div>
             
-            <!-- Quick Actions -->
-            <div style="background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
-                <h3 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 700; color: #1e293b;">🚀 Hızlı İşlemler</h3>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-                    <button onclick="showAddProductModal()" 
-                            style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; border: none; color: white; font-weight: 600; display: flex; align-items: center; gap: 12px;"
-                            onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 8px 25px rgba(102, 126, 234, 0.4)'" 
-                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
-                        <span style="font-size: 24px;">➕</span>
-                        <span>Yeni Ürün Ekle</span>
-                    </button>
-                    
-                    <button onclick="showCategoriesModal()" 
-                            style="background: white; border: 2px solid #e5e7eb; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; color: #374151; font-weight: 600; display: flex; align-items: center; gap: 12px;"
-                            onmouseover="this.style.borderColor='#667eea'; this.style.boxShadow='0 8px 25px rgba(0,0,0,0.1)'" 
-                            onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
-                        <span style="font-size: 24px;">📁</span>
-                        <span>Kategoriler</span>
-                    </button>
-                    
-                    <button onclick="showBrandsModal()" 
-                            style="background: white; border: 2px solid #e5e7eb; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; color: #374151; font-weight: 600; display: flex; align-items: center; gap: 12px;"
-                            onmouseover="this.style.borderColor='#667eea'; this.style.boxShadow='0 8px 25px rgba(0,0,0,0.1)'" 
-                            onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
-                        <span style="font-size: 24px;">🏷️</span>
-                        <span>Markalar</span>
-                    </button>
-                    
-                    <button onclick="showBulkOperationsModal()" 
-                            style="background: white; border: 2px solid #e5e7eb; padding: 20px; border-radius: 12px; cursor: pointer; transition: all 0.3s; color: #374151; font-weight: 600; display: flex; align-items: center; gap: 12px;"
-                            onmouseover="this.style.borderColor='#667eea'; this.style.boxShadow='0 8px 25px rgba(0,0,0,0.1)'" 
-                            onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
-                        <span style="font-size: 24px;">⚡</span>
-                        <span>Toplu İşlemler</span>
-                    </button>
-                </div>
-            </div>
             
             <!-- Low Stock Alert -->
             ${lowStockProducts.length > 0 ? `
@@ -291,7 +258,13 @@ function showDashboard() {
         </div>
     `;
     
-    document.getElementById('product-content-area').innerHTML = dashboardHtml;
+    const contentArea = document.getElementById('product-content-area');
+    if (!contentArea) {
+        console.warn('showDashboard: product-content-area bulunamadı. Modal açık mı?');
+        return;
+    }
+
+    contentArea.innerHTML = dashboardHtml;
 }
 
 // 📋 LİSTE GÖRÜNÜMÜ
@@ -303,6 +276,24 @@ function showListView() {
         <div style="display: grid; gap: 24px;">
             <!-- Search and Filters -->
             <div style="background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+                    <div style="font-size: 20px; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                        📋 Ürün Listesi
+                    </div>
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                        <button onclick="showAddProductModal()"
+                                style="padding: 12px 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none; border-radius: 12px; cursor: pointer; font-weight: 600; color: white; transition: all 0.2s; display: flex; align-items: center; gap: 8px;"
+                                onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 10px 25px rgba(16, 185, 129, 0.35)'"
+                                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                            ➕ Yeni Ürün
+                        </button>
+                        <button onclick="showExcelOperationsModalFromRenderer()"
+                                style="padding: 12px 20px; background: #f3f4f6; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; color: #374151; transition: all 0.2s; display: flex; align-items: center; gap: 8px;"
+                                onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">
+                            📊 Toplu İşlemler
+                        </button>
+                    </div>
+                </div>
                 <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 16px; align-items: end;">
                     <div>
                         <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">🔍 Ürün Ara</label>
@@ -356,7 +347,13 @@ function showListView() {
         </div>
     `;
     
-    document.getElementById('product-content-area').innerHTML = listHtml;
+    const contentArea = document.getElementById('product-content-area');
+    if (!contentArea) {
+        console.warn('showListView: product-content-area bulunamadı. Modal açık mı?');
+        return;
+    }
+
+    contentArea.innerHTML = listHtml;
 }
 
 // 🎯 KART GÖRÜNÜMÜ
@@ -700,6 +697,9 @@ function toggleProductSelection(productId) {
         selectedProducts.add(productId);
     }
     updateSelectionUI();
+    
+    // Debug için seçili ürün sayısını logla
+    console.log(`Ürün seçimi değişti. Seçili ürün sayısı: ${selectedProducts.size}`);
 }
 
 function toggleSelectAll(checkbox) {
@@ -722,291 +722,7 @@ function updateSelectionUI() {
     console.log(`Seçili ürün sayısı: ${selectedCount}`);
 }
 
-// 📊 EXCEL IMPORT MODAL
-function showExcelImportModal() {
-    const modalHtml = `
-        <div id="excel-import-modal" class="modal active" style="z-index: 10000;">
-            <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
-                <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 24px; border-radius: 16px 16px 0 0; color: white;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h3 style="margin: 0; font-size: 24px; font-weight: 700;">📊 Excel ile Toplu Ürün Yükleme</h3>
-                        <button onclick="closeProductModal('excel-import-modal')" 
-                                style="background: rgba(255,255,255,0.2); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 20px; transition: all 0.3s;"
-                                onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
-                                onmouseout="this.style.background='rgba(255,255,255,0.2)'">
-                            ×
-                        </button>
-                    </div>
-                </div>
-                
-                <div style="padding: 24px;">
-                    <!-- Instructions -->
-                    <div style="background: #f0f9ff; padding: 20px; border-radius: 12px; border-left: 4px solid #0ea5e9; margin-bottom: 24px;">
-                        <h4 style="margin: 0 0 12px 0; color: #0c4a6e; font-size: 16px; font-weight: 700;">📋 Excel Dosyası Formatı</h4>
-                        <div style="color: #0c4a6e; font-size: 14px; line-height: 1.6;">
-                            <p style="margin: 0 0 8px 0;"><strong>Gerekli Sütunlar:</strong></p>
-                            <ul style="margin: 0; padding-left: 20px;">
-                                <li><strong>Ürün Adı</strong> (zorunlu) - Ürünün adı</li>
-                                <li><strong>Satış Fiyatı</strong> (zorunlu) - Ürünün satış fiyatı</li>
-                                <li><strong>Stok</strong> - Mevcut stok miktarı (varsayılan: 0)</li>
-                                <li><strong>Kategori</strong> - Ürün kategorisi</li>
-                                <li><strong>Marka</strong> - Ürün markası</li>
-                                <li><strong>Ürün Kodu</strong> - Ürün kodu</li>
-                                <li><strong>Barkod</strong> - Ürün barkodu</li>
-                                <li><strong>Alış Fiyatı</strong> - Ürünün alış fiyatı</li>
-                                <li><strong>Birim</strong> - Ürün birimi (varsayılan: adet)</li>
-                                <li><strong>Açıklama</strong> - Ürün açıklaması</li>
-                            </ul>
-                        </div>
-                    </div>
-                    
-                    <!-- File Upload -->
-                    <div style="background: white; border: 2px dashed #d1d5db; border-radius: 12px; padding: 40px; text-align: center; margin-bottom: 24px;">
-                        <div style="font-size: 48px; margin-bottom: 16px;">📁</div>
-                        <h4 style="margin: 0 0 8px 0; color: #374151; font-size: 18px;">Excel Dosyasını Seçin</h4>
-                        <p style="margin: 0 0 20px 0; color: #6b7280; font-size: 14px;">.xlsx veya .xls formatında dosya yükleyin</p>
-                        <input type="file" id="excel-file-input" accept=".xlsx,.xls" 
-                               style="display: none;" onchange="handleExcelFileSelect(event)">
-                        <button onclick="document.getElementById('excel-file-input').click()" 
-                                style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 16px;">
-                            📁 Dosya Seç
-                        </button>
-                    </div>
-                    
-                    <!-- Preview Area -->
-                    <div id="excel-preview-area" style="display: none;">
-                        <h4 style="margin: 0 0 16px 0; color: #374151; font-size: 18px; font-weight: 700;">📋 Önizleme</h4>
-                        <div id="excel-preview-table" style="background: white; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb; max-height: 300px; overflow-y: auto;">
-                            <!-- Preview table will be inserted here -->
-                        </div>
-                        <div style="margin-top: 16px; display: flex; gap: 12px; justify-content: flex-end;">
-                            <button onclick="closeProductModal('excel-import-modal')" 
-                                    style="padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; color: #374151;">
-                                İptal
-                            </button>
-                            <button onclick="importProductsFromExcel()" 
-                                    style="padding: 12px 24px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                                📊 Ürünleri İçe Aktar
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-}
 
-// 📊 EXCEL EXPORT
-function exportProductsToExcel() {
-    try {
-        // Ürün verilerini Excel formatına hazırla
-        const excelData = products.map(product => {
-            const category = categories.find(c => c.id === product.category_id);
-            const brand = brands.find(b => b.id === product.brand_id);
-            
-            return {
-                'Ürün Adı': product.name,
-                'Ürün Kodu': product.code || '',
-                'Barkod': product.barcode || '',
-                'Kategori': category ? category.name : '',
-                'Marka': brand ? brand.name : '',
-                'Stok': product.stock || 0,
-                'Birim': product.unit || 'adet',
-                'Alış Fiyatı': product.purchase_price || 0,
-                'Satış Fiyatı': product.sale_price || 0,
-                'Açıklama': product.description || ''
-            };
-        });
-        
-        // Excel dosyası oluştur ve indir
-        const ws = XLSX.utils.json_to_sheet(excelData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Ürünler');
-        
-        const fileName = `urunler_${new Date().toISOString().split('T')[0]}.xlsx`;
-        XLSX.writeFile(wb, fileName);
-        
-        showNotification('Ürünler başarıyla Excel dosyasına aktarıldı', 'success');
-        
-    } catch (error) {
-        console.error('Excel export hatası:', error);
-        showNotification('Excel dosyası oluşturulurken hata oluştu', 'error');
-    }
-}
-
-// 📊 EXCEL IMPORT HANDLER
-function handleExcelFileSelect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        try {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const sheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[sheetName];
-            const jsonData = XLSX.utils.sheet_to_json(worksheet);
-            
-            // Preview oluştur
-            createExcelPreview(jsonData);
-            
-        } catch (error) {
-            console.error('Excel dosyası okuma hatası:', error);
-            showNotification('Excel dosyası okunamadı', 'error');
-        }
-    };
-    reader.readAsArrayBuffer(file);
-}
-
-function createExcelPreview(data) {
-    if (data.length === 0) {
-        showNotification('Excel dosyası boş görünüyor', 'warning');
-        return;
-    }
-    
-    // İlk 10 satırı göster
-    const previewData = data.slice(0, 10);
-    const headers = Object.keys(previewData[0]);
-    
-    const tableHtml = `
-        <table style="width: 100%; border-collapse: collapse;">
-            <thead style="background: #f8fafc;">
-                <tr>
-                    ${headers.map(header => `<th style="padding: 12px; text-align: left; font-weight: 700; color: #374151; border-bottom: 2px solid #e2e8f0;">${header}</th>`).join('')}
-                </tr>
-            </thead>
-            <tbody>
-                ${previewData.map((row, index) => `
-                    <tr style="border-bottom: 1px solid #f3f4f6;">
-                        ${headers.map(header => `<td style="padding: 12px; color: #374151;">${row[header] || ''}</td>`).join('')}
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>
-        ${data.length > 10 ? `<div style="text-align: center; padding: 12px; color: #6b7280; font-size: 14px;">ve ${data.length - 10} satır daha...</div>` : ''}
-    `;
-    
-    document.getElementById('excel-preview-table').innerHTML = tableHtml;
-    document.getElementById('excel-preview-area').style.display = 'block';
-    
-    // Global değişkene kaydet
-    window.excelImportData = data;
-}
-
-async function importProductsFromExcel() {
-    if (!window.excelImportData) {
-        showNotification('Önce Excel dosyasını seçin', 'warning');
-        return;
-    }
-    
-    try {
-        let successCount = 0;
-        let errorCount = 0;
-        const errors = [];
-        
-        for (const row of window.excelImportData) {
-            try {
-                // Veri dönüşümü
-                const productData = {
-                    name: row['Ürün Adı'] || row['urun_adi'] || row['name'],
-                    code: row['Ürün Kodu'] || row['urun_kodu'] || row['code'] || null,
-                    barcode: row['Barkod'] || row['barkod'] || row['barcode'] || null,
-                    category_id: null,
-                    brand_id: null,
-                    stock: parseFloat(row['Stok'] || row['stok'] || row['stock']) || 0,
-                    unit: row['Birim'] || row['birim'] || row['unit'] || 'adet',
-                    purchase_price: parseFloat(row['Alış Fiyatı'] || row['alis_fiyati'] || row['purchase_price']) || 0,
-                    sale_price: parseFloat(row['Satış Fiyatı'] || row['satis_fiyati'] || row['sale_price']) || 0,
-                    description: row['Açıklama'] || row['aciklama'] || row['description'] || null
-                };
-                
-                // Validasyon
-                if (!productData.name) {
-                    throw new Error('Ürün adı boş olamaz');
-                }
-                
-                if (productData.sale_price <= 0) {
-                    throw new Error('Satış fiyatı 0\'dan büyük olmalıdır');
-                }
-                
-                // Kategori bul
-                const categoryName = row['Kategori'] || row['kategori'] || row['category'];
-                if (categoryName) {
-                    let category = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
-                    if (!category) {
-                        // Kategori yoksa oluştur
-                        category = await ipcRenderer.invoke('add-category', {
-                            name: categoryName,
-                            icon: '📦',
-                            color: '#667eea'
-                        });
-                        categories.push(category);
-                    }
-                    productData.category_id = category.id;
-                }
-                
-                // Marka bul
-                const brandName = row['Marka'] || row['marka'] || row['brand'];
-                if (brandName) {
-                    let brand = brands.find(b => b.name.toLowerCase() === brandName.toLowerCase());
-                    if (!brand) {
-                        // Marka yoksa oluştur
-                        brand = await ipcRenderer.invoke('add-brand', {
-                            name: brandName,
-                            icon: '🏷️',
-                            color: '#667eea'
-                        });
-                        brands.push(brand);
-                    }
-                    productData.brand_id = brand.id;
-                }
-                
-                // Ürünü ekle
-                const newProduct = await ipcRenderer.invoke('add-product', productData);
-                products.push(newProduct);
-                successCount++;
-                
-            } catch (error) {
-                errorCount++;
-                errors.push(`${row['Ürün Adı'] || 'Bilinmeyen'}: ${error.message}`);
-            }
-        }
-        
-        // Sonuçları göster
-        if (successCount > 0) {
-            showNotification(`${successCount} ürün başarıyla eklendi`, 'success');
-        }
-        
-        if (errorCount > 0) {
-            showNotification(`${errorCount} ürün eklenemedi`, 'warning');
-            console.error('Excel import hataları:', errors);
-        }
-        
-        // Modal'ı kapat ve listeyi güncelle
-        closeProductModal('excel-import-modal');
-        
-        // Mevcut görünümü yenile
-        if (currentView === 'dashboard') {
-            showDashboard();
-        } else if (currentView === 'list') {
-            showListView();
-        } else if (currentView === 'grid') {
-            showGridView();
-        }
-        
-        // Satış ekranını güncelle
-        if (typeof updateSaleProductSelect === 'function') {
-            updateSaleProductSelect();
-        }
-        
-    } catch (error) {
-        console.error('Excel import hatası:', error);
-        showNotification('Ürünler içe aktarılırken hata oluştu', 'error');
-    }
-}
 
 // 🎯 EVENT LISTENERS
 function setupProductEventListeners() {
@@ -1123,14 +839,6 @@ function showBrandsModal() {
     }
 }
 
-function showBulkOperationsModal() {
-    // Bu fonksiyon renderer.js'de tanımlı olacak
-    if (typeof window.showBulkOperationsModalFromRenderer === 'function') {
-        window.showBulkOperationsModalFromRenderer();
-    } else {
-        showNotification('Toplu işlemler modülü henüz aktif değil', 'warning');
-    }
-}
 
 // 🌐 GLOBAL FONKSİYONLAR
 window.showProductManagementModule = showProductManagement;
@@ -1143,10 +851,6 @@ window.clearFilters = clearFilters;
 window.clearFiltersGrid = clearFiltersGrid;
 window.toggleProductSelection = toggleProductSelection;
 window.toggleSelectAll = toggleSelectAll;
-window.showExcelImportModal = showExcelImportModal;
-window.exportProductsToExcel = exportProductsToExcel;
-window.handleExcelFileSelect = handleExcelFileSelect;
-window.importProductsFromExcel = importProductsFromExcel;
 window.closeProductModal = closeProductModal;
 window.handleProductModalKeydown = handleProductModalKeydown;
 
@@ -1236,7 +940,7 @@ function showAddCategoryModal() {
                 updateProductCategorySelect(result.id);
                 
                 // Dashboard'ı yenile (eğer dashboard görünümündeyse)
-                if (currentView === 'dashboard') {
+                if (currentView === 'dashboard' && isProductModalOpen()) {
                     showDashboard();
                 }
             } else {
@@ -1331,7 +1035,7 @@ function showAddBrandModal() {
                 updateProductBrandSelect(result.id);
                 
                 // Dashboard'ı yenile (eğer dashboard görünümündeyse)
-                if (currentView === 'dashboard') {
+                if (currentView === 'dashboard' && isProductModalOpen()) {
                     showDashboard();
                 }
             } else {
@@ -1745,7 +1449,7 @@ async function deleteCategory(categoryId) {
                 updateCategorySelect();
                 
                 // Eğer dashboard görünümündeyse yenile
-                if (currentView === 'dashboard') {
+                if (currentView === 'dashboard' && isProductModalOpen()) {
                     showDashboard();
                 }
             } else {
@@ -1794,7 +1498,7 @@ async function deleteBrand(brandId) {
                 updateBrandSelect();
                 
                 // Eğer dashboard görünümündeyse yenile
-                if (currentView === 'dashboard') {
+                if (currentView === 'dashboard' && isProductModalOpen()) {
                     showDashboard();
                 }
             } else {

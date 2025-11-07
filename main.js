@@ -448,6 +448,11 @@ function registerGlobalShortcuts() {
 
 // IPC handlers
 function setupIpcHandlers() {
+    const toNumber = (value, fallback = 0) => {
+        if (value === undefined || value === null || value === '') return fallback;
+        const parsed = parseFloat(String(value).replace(',', '.'));
+        return Number.isFinite(parsed) ? parsed : fallback;
+    };
     ipcMain.handle('get-customers', () => {
         try {
             const stmt = db.prepare('SELECT * FROM customers ORDER BY name');
@@ -775,6 +780,226 @@ function setupIpcHandlers() {
         } catch (error) {
             console.error('Get brands error:', error);
             return [];
+        }
+    });
+    
+    // Excel import için tüm kategorileri getir
+    ipcMain.handle('get-all-categories', () => {
+        try {
+            const stmt = db.prepare('SELECT * FROM categories ORDER BY name');
+            return stmt.all();
+        } catch (error) {
+            console.error('Get all categories error:', error);
+            return [];
+        }
+    });
+    
+    // Excel import için tüm markaları getir
+    ipcMain.handle('get-all-brands', () => {
+        try {
+            const stmt = db.prepare('SELECT * FROM brands ORDER BY name');
+            return stmt.all();
+        } catch (error) {
+            console.error('Get all brands error:', error);
+            return [];
+        }
+    });
+
+    ipcMain.handle('import-products-from-excel', (event, rows = []) => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+
+            if (!Array.isArray(rows) || rows.length === 0) {
+                return { success: false, message: 'Aktarılacak ürün bulunamadı.' };
+            }
+
+            const normalize = (value) => (value !== undefined && value !== null ? String(value).trim() : '');
+
+            const selectExistingProduct = db.prepare('SELECT id FROM products WHERE LOWER(name) = LOWER(?) LIMIT 1');
+            const insertProduct = db.prepare(`
+                INSERT INTO products (
+                    name, code, barcode, unit, purchase_price, sale_price,
+                    vat_rate, stock, min_stock, category_id, brand_id, description
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+
+            const selectCategoryByName = db.prepare('SELECT id FROM categories WHERE LOWER(name) = LOWER(?) LIMIT 1');
+            const insertCategory = db.prepare('INSERT INTO categories (name, icon, color, description) VALUES (?, ?, ?, ?)');
+            const categoryCache = new Map();
+
+            const getCategoryId = (name) => {
+                const cleanName = normalize(name);
+                if (!cleanName) return null;
+                const key = cleanName.toLowerCase();
+                if (categoryCache.has(key)) return categoryCache.get(key);
+
+                const existing = selectCategoryByName.get(cleanName);
+                if (existing?.id) {
+                    categoryCache.set(key, existing.id);
+                    return existing.id;
+                }
+
+                const result = insertCategory.run(cleanName, '📦', '#6366f1', null);
+                categoryCache.set(key, result.lastInsertRowid);
+                return result.lastInsertRowid;
+            };
+
+            const summary = {
+                success: true,
+                inserted: 0,
+                skipped: 0,
+                errors: []
+            };
+
+            const importTx = db.transaction((items) => {
+                items.forEach((item, index) => {
+                    try {
+                        const name = normalize(item.name);
+                        const salePrice = toNumber(item.sale_price);
+
+                        if (!name || salePrice <= 0) {
+                            summary.skipped += 1;
+                            summary.errors.push(`Satır ${index + 1}: Ürün adı veya satış fiyatı eksik.`);
+                            return;
+                        }
+
+                        if (selectExistingProduct.get(name)) {
+                            summary.skipped += 1;
+                            summary.errors.push(`Satır ${index + 1}: "${name}" zaten mevcut, atlandı.`);
+                            return;
+                        }
+
+                        const categoryId = getCategoryId(item.category);
+
+                        insertProduct.run(
+                            name,
+                            normalize(item.code) || null,
+                            normalize(item.barcode) || null,
+                            normalize(item.unit) || 'adet',
+                            toNumber(item.purchase_price),
+                            salePrice,
+                            toNumber(item.vat_rate) || 20,
+                            toNumber(item.stock),
+                            toNumber(item.min_stock),
+                            categoryId,
+                            null,
+                            normalize(item.description) || null
+                        );
+
+                        summary.inserted += 1;
+                    } catch (innerError) {
+                        console.error('Import product row error:', innerError);
+                        summary.skipped += 1;
+                        summary.errors.push(`Satır ${index + 1}: ${innerError.message}`);
+                    }
+                });
+            });
+
+            importTx(rows);
+            return summary;
+        } catch (error) {
+            console.error('import-products-from-excel error:', error);
+            return { success: false, message: error.message || 'Ürünler içe aktarılırken hata oluştu.' };
+        }
+    });
+
+    ipcMain.handle('import-customers-from-excel', (event, rows = []) => {
+        try {
+            if (!db) {
+                throw new Error('Veritabanı başlatılmadı');
+            }
+
+            if (!Array.isArray(rows) || rows.length === 0) {
+                return { success: false, message: 'Aktarılacak müşteri bulunamadı.' };
+            }
+
+            const normalize = (value) => (value !== undefined && value !== null ? String(value).trim() : '');
+
+            const selectExistingCustomer = db.prepare('SELECT id FROM customers WHERE LOWER(name) = LOWER(?) LIMIT 1');
+            const insertCustomer = db.prepare(`
+                INSERT INTO customers (
+                    name, code, phone, gsm, address, credit_limit,
+                    tax_office, tax_number, tc_number, email, website,
+                    customer_type, invoice_address, invoice_city, invoice_district,
+                    invoice_postal_code, contact_person, contact_phone,
+                    account_code, cost_center, e_invoice_alias, e_archive_alias,
+                    is_e_invoice_enabled, is_e_archive_enabled
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+
+            const summary = {
+                success: true,
+                inserted: 0,
+                skipped: 0,
+                errors: []
+            };
+
+            const importTx = db.transaction((items) => {
+                items.forEach((item, index) => {
+                    try {
+                        const name = normalize(item.name);
+                        if (!name) {
+                            summary.skipped += 1;
+                            summary.errors.push(`Satır ${index + 1}: Müşteri adı eksik.`);
+                            return;
+                        }
+
+                        if (selectExistingCustomer.get(name)) {
+                            summary.skipped += 1;
+                            summary.errors.push(`Satır ${index + 1}: "${name}" zaten mevcut, atlandı.`);
+                            return;
+                        }
+
+                        const creditLimit = toNumber(item.limit, 500);
+                        const customerTypeRaw = normalize(item.type).toLowerCase();
+                        const customerType =
+                            customerTypeRaw.includes('kurum') || customerTypeRaw.includes('company')
+                                ? 'corporate'
+                                : 'individual';
+
+                        insertCustomer.run(
+                            name,
+                            normalize(item.code) || null,
+                            normalize(item.phone) || null,
+                            normalize(item.gsm) || null,
+                            normalize(item.address) || null,
+                            creditLimit,
+                            normalize(item.tax_office) || null,
+                            normalize(item.tax_number) || null,
+                            null,
+                            normalize(item.email) || null,
+                            null,
+                            customerType || 'individual',
+                            normalize(item.address) || null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            normalize(item.gsm || item.phone) || null,
+                            normalize(item.account_code) || null,
+                            null,
+                            null,
+                            null,
+                            0,
+                            0
+                        );
+
+                        summary.inserted += 1;
+                    } catch (innerError) {
+                        console.error('Import customer row error:', innerError);
+                        summary.skipped += 1;
+                        summary.errors.push(`Satır ${index + 1}: ${innerError.message}`);
+                    }
+                });
+            });
+
+            importTx(rows);
+            return summary;
+        } catch (error) {
+            console.error('import-customers-from-excel error:', error);
+            return { success: false, message: error.message || 'Müşteriler içe aktarılırken hata oluştu.' };
         }
     });
 

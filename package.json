@@ -44,7 +44,7 @@
       "alert-system.js",
       "product-module.js",
       "product-management-new.js",
-      "excel-import-export.js",
+      "excel-manager.js",
       "data-manager.js",
       "config-manager.js",
       "backup-manager.js",
